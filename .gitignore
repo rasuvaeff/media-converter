@@ -1,0 +1,8 @@
+vendor/
+composer.lock
+.php-cs-fixer.cache
+/build/*
+!/build/.gitkeep
+# Runtime destination locks produced by OutputTransaction (e.g. when running
+# the engine-driven examples).
+*.media-converter.lock

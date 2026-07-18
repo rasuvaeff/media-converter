@@ -1,0 +1,105 @@
+{
+    "name": "rasuvaeff/media-converter",
+    "description": "Type-safe PHP wrapper over the ffmpeg/ffprobe subprocess: compose transcode/remux/filter operations into a pipeline, with retry, bulkhead, progress events, and DRM-aware probing",
+    "license": "BSD-3-Clause",
+    "type": "library",
+    "keywords": [
+        "ffmpeg",
+        "ffprobe",
+        "video",
+        "audio",
+        "conversion",
+        "transcode",
+        "video-processing",
+        "wrapper",
+        "media",
+        "hls",
+        "dash",
+        "mp4",
+        "webm",
+        "mkv"
+    ],
+    "authors": [
+        {
+            "name": "Victor Razuvaev",
+            "email": "rasuvaeff@gmail.com"
+        }
+    ],
+    "homepage": "https://github.com/rasuvaeff/media-converter",
+    "support": {
+        "issues": "https://github.com/rasuvaeff/media-converter/issues",
+        "source": "https://github.com/rasuvaeff/media-converter"
+    },
+    "require": {
+        "php": "8.3 - 8.5",
+        "rasuvaeff/bulkhead": "^1.0",
+        "rasuvaeff/duration": "^1.0",
+        "rasuvaeff/retry": "^1.0",
+        "symfony/process": "^7.0 || ^8.0"
+    },
+    "require-dev": {
+        "ergebnis/composer-normalize": "^2.51",
+        "friendsofphp/php-cs-fixer": "^3.95",
+        "infection/infection": "^0.33",
+        "maglnet/composer-require-checker": "^4.17",
+        "psr/simple-cache": "^3.0",
+        "rasuvaeff/property-testing": "^1.0 || ^2.0",
+        "rector/rector": "^2.4",
+        "roave/backward-compatibility-check": "^8.0",
+        "testo/bridge-infection": "^0.1.6",
+        "testo/testo": "^0.10.25",
+        "vimeo/psalm": "^6.16"
+    },
+    "suggest": {
+        "psr/simple-cache": "^3.0 to enable CachedProbesMedia, the PSR-16 decorator that caches ffprobe results"
+    },
+    "autoload": {
+        "psr-4": {
+            "Rasuvaeff\\MediaConverter\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Rasuvaeff\\MediaConverter\\Benchmarks\\": "benchmarks/",
+            "Rasuvaeff\\MediaConverter\\Tests\\": "tests/"
+        }
+    },
+    "config": {
+        "allow-plugins": {
+            "ergebnis/composer-normalize": true,
+            "infection/extension-installer": true
+        },
+        "platform": {
+            "ext-bcmath": "1.0.0",
+            "ext-intl": "1.0.0"
+        },
+        "sort-packages": true
+    },
+    "scripts": {
+        "bc-check": "roave-backward-compatibility-check",
+        "bench": "testo --suite=Benchmarks -vv",
+        "build": [
+            "@composer validate --strict",
+            "@composer normalize --dry-run",
+            "@require-checker",
+            "@cs",
+            "@psalm",
+            "@test"
+        ],
+        "cs": "php-cs-fixer fix --dry-run --diff --config=.php-cs-fixer.php",
+        "cs:fix": "php-cs-fixer fix --diff --config=.php-cs-fixer.php",
+        "mutation": "infection --threads=max",
+        "psalm": "psalm --no-cache",
+        "rector": "rector process --dry-run",
+        "rector:fix": "rector process",
+        "release-check": [
+            "@build",
+            "@rector",
+            "@bc-check"
+        ],
+        "require-checker": "composer-require-checker check --config-file=composer-require-checker.json composer.json",
+        "test": "testo --suite=Unit",
+        "test:coverage": "testo --suite=Unit --coverage --coverage-clover=build/coverage.xml",
+        "test:coverage:ci": "testo --suite=Unit --coverage-clover=build/coverage.xml"
+    }
+}

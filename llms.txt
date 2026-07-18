@@ -1,0 +1,273 @@
+# media-converter
+
+Install:
+
+```
+composer require rasuvaeff/media-converter
+```
+
+General-purpose type-safe PHP wrapper over the `ffmpeg` / `ffprobe`
+subprocess. Namespace `Rasuvaeff\MediaConverter`. Media processing is composed
+from OPERATIONS (transcode, trim, scale, crop, extract audio, remux, …) into a
+`Pipeline` that renders the exact ffmpeg argv. The download use case
+(HLS/DASH → MP4) is one composition among many, not the package's purpose.
+
+`ffmpeg`/`ffprobe` binaries are needed only to RUN a command; composing and
+inspecting a pipeline needs no binary.
+
+## Rules
+
+- PHP 8.3+, `declare(strict_types=1)`. Value objects and operations are
+  `final readonly class`.
+- Compose with `Pipeline::from($source)->add($operation)->...`, or
+  `Pipeline::concat($segments)` for concatenation. Pipeline is IMMUTABLE —
+  `add()` returns a new instance. `toArgv($binary, $out)` renders the argv;
+  `MediaConverter` (implements `ConvertsMedia`) runs it.
+- Operations implement `Operation\OperationInterface::applyTo(CommandSpec)`.
+  Filter operations are applied in insertion order and are NOT commutative
+  (`scale,crop` != `crop,scale`).
+- Incompatible compositions are rejected BEFORE ffmpeg runs: stream-copy
+  (`Remux`) with any filter or codec option, or `AnimatedPreview`/`Watermark`/
+  `Pipeline::concat()` (a self-contained filter graph / a `-filter_complex`
+  operation) with another video filter operation, throws `ConversionFailed`
+  with reason `IncompatibleOperations`. `Pipeline::concat()` also rejects a
+  plain AUDIO filter operation (concat feeds audio through the graph too).
+  `Watermark` and `Pipeline::concat()` also cannot be combined: both claim
+  ownership of `-filter_complex` and the conflict is rejected before ffmpeg
+  runs. `SelectStreams(videoIndex: …)` cannot be combined with `Watermark`/
+  `Pipeline::concat()` (video comes out of the graph; rejected in either
+  add-order), and only one operation may seek the output timeline (`Trim` +
+  `Thumbnail` is rejected; `Trim` + `AnimatedPreview` stays accepted — the
+  preview's own from/to fully override the trim).
+- A literal single quote (`'`) cannot be embedded in ANY ffmpeg filter
+  argument via `-vf`/`-filter_complex` string syntax (verified empirically —
+  every escaping scheme tried is silently dropped by ffmpeg's filtergraph
+  parser). `TextOverlay.fontFile` and `BurnSubtitles.srtOrAss` reject a path
+  containing `'` in the constructor instead of producing a broken command.
+- All paths/URLs are separate argv entries (`symfony/process` array form),
+  never shell-interpolated.
+- `FfmpegBinary::assertExecutable()` checks both binaries; separate
+  `assertFfmpegExecutable()` / `assertFfprobeExecutable()` checks are
+  available. Missing subprocesses and exit 127 map to binary-specific reasons.
+- DRM is never bypassed — encrypted sources fail with reason `Drm`.
+- Terminal operations declare output kind; incompatible video/audio/subtitle
+  compositions fail before ffmpeg. `SelectStreams` chooses explicit streams.
+- `ConversionFailureReason` enum values are a stable contract; new cases are
+  minor, removing/renaming is major. Only `NonZeroExit` is potentially
+  transient (`isPotentiallyTransient()`), so retry policies match on it.
+
+## API
+
+```php
+use Rasuvaeff\Duration\Duration;
+use Rasuvaeff\MediaConverter\CachedProbesMedia;
+use Rasuvaeff\MediaConverter\CancellationToken;
+use Rasuvaeff\MediaConverter\ConversionCancelled;
+use Rasuvaeff\MediaConverter\ConversionFailed;
+use Rasuvaeff\MediaConverter\ConversionFailureReason;
+use Rasuvaeff\MediaConverter\ConversionResult;
+use Rasuvaeff\MediaConverter\ConvertsMedia;
+use Rasuvaeff\MediaConverter\FfmpegBinary;
+use Rasuvaeff\MediaConverter\MediaConverter;
+use Rasuvaeff\MediaConverter\MediaConverterException;
+use Rasuvaeff\MediaConverter\MediaInfo;
+use Rasuvaeff\MediaConverter\Pipeline;
+use Rasuvaeff\MediaConverter\ProbesMedia;
+use Rasuvaeff\MediaConverter\Operation\{Transcode, Remux, Trim, Scale, Crop, Rotate, Pad, Fps, ExtractAudio};
+use Rasuvaeff\MediaConverter\Operation\{Thumbnail, SpriteSheet, AnimatedPreview, TextOverlay, Position};
+use Rasuvaeff\MediaConverter\Operation\{Watermark, ReplaceAudio, NormalizeLoudness, BurnSubtitles, ExtractSubtitles};
+use Rasuvaeff\MediaConverter\Operation\{PackageHls, PackageDash};
+use Rasuvaeff\MediaConverter\Progress\ProgressEvent;
+
+// FfmpegBinary
+$bin = new FfmpegBinary('/usr/bin/ffmpeg', '/usr/bin/ffprobe'); // defaults
+$bin = FfmpegBinary::default();
+$bin->ffmpegPath(); $bin->ffprobePath();      // string
+$bin->assertExecutable();                     // throws ConversionFailed(FfmpegNotExecutable/FfprobeNotExecutable, 127)
+$bin->assertFfmpegExecutable(); $bin->assertFfprobeExecutable(); // selective pre-flight
+
+// Pipeline — immutable; compose operations, render argv
+$argv = Pipeline::from('input.mov')
+    ->add(new Trim(Duration::seconds(30), Duration::seconds(90)))
+    ->add(new Scale(height: 720))
+    ->add(new Transcode(videoCodec: 'libx264', audioCodec: 'aac', videoBitrateKbps: 2500))
+    ->toArgv($bin, 'out.mp4');                 // list<string>
+
+// Pipeline::concat — separate constructor (concat IS the source, not a decorator on one)
+Pipeline::concat(array $segments, bool $hasAudio = true): self;
+    // -filter_complex "[0:v][0:a][1:v][1:a]..concat=n=<count>:v=1:a=<0|1>[outv][outa]" -map '[outv]' -map '[outa]'
+    // (no audio pads/map when $hasAudio=false, or when ReplaceAudio/SelectStreams(audioIndex) claims the
+    // audio output — the segments' audio pads are dropped, a=0); needs >=2 segments; re-encodes (concat
+    // FILTER, not the lossless concat DEMUXER — deferred, needs a temp list file); source() returns
+    // segments[0], sources() returns all
+    // .m3u8/.mpd are read natively by ffmpeg -> Pipeline::from('playlist.m3u8')->add(new Remux()) instead
+
+// Operations (Operation\OperationInterface)
+new Transcode(?videoCodec, ?audioCodec, ?videoBitrateKbps, ?audioBitrateKbps); // ffmpeg encoder names; >=1 required
+new Remux();                                   // -c copy; conflicts with any filter/codec op
+new Trim(Duration $from, ?Duration $to = null, bool $fastSeek = false);
+    // default: output-side -ss/-to (accurate seek, decodes to the cut point)
+    // fastSeek: INPUT-side -ss before -i (jumps via container index) + output -t (to-from);
+    //   same [from, to) slice; rejected on a Pipeline::concat() pipeline (would seek segment 0 only)
+new Scale(?int $width = null, ?int $height = null); // null dim => -2 (keep aspect); >=1 required
+new Crop(int $w, int $h, int $x = 0, int $y = 0);
+new Rotate(int $degrees);                      // 90 | 180 | 270
+new Pad(int $w, int $h, int $x = 0, int $y = 0, string $color = 'black');
+new Fps(int $fps);
+new ExtractAudio(string $codec = 'libmp3lame', ?int $bitrateKbps = 192); // -vn -c:a ...
+new Thumbnail(Duration $at, ?int $width = null); // -ss + -frames:v 1 -an; optional scale
+new SpriteSheet(int $rows, int $cols, Duration $interval, ?int $tileWidth = null);
+    // fps=1_000_000/interval-us (exact rational) + optional scale + tile=colsxrows; -frames:v 1 -an
+new AnimatedPreview(Duration $from, Duration $to, int $fps = 10, int $width = 320);
+    // -ss/-to + fps,scale,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse (single -vf pass, no filter_complex)
+    // markExclusiveVideoGraph(): rejected by Pipeline if combined with another video filter operation
+new TextOverlay(string $text, Position $position = Position::BottomRight, int $margin = 16,
+    int $fontSize = 24, string $fontColor = 'white', ?string $fontFile = null);
+    // drawtext=expansion=none:text='...' (quoted, NOT FilterGraph::escapeArgument — see quoteDrawtextValue)
+    // fontFile containing a single quote is REJECTED in the constructor (ffmpeg cannot embed one)
+enum Position { TopLeft TopCenter TopRight MiddleLeft Center MiddleRight BottomLeft BottomCenter BottomRight }
+new Watermark(string $image, Position $position = Position::BottomRight, int $margin = 16, ?float $opacity = null);
+    // adds $image as a 2nd input; -filter_complex "[1:v]format=rgba,colorchannelmixer=aa=..[wm];[0:v][wm]overlay=x:y[wmout]"
+    // (no colorchannelmixer stage when $opacity is null); -map '[wmout]' -map '0:a?'
+    // owns the semantic video output slot; uses -filter_complex, NOT -vf -> rejects a plain video filter
+    // (a plain audio filter, e.g. NormalizeLoudness, composes fine); only one Watermark per pipeline
+new ReplaceAudio(string $audioSource, bool $shortest = true);
+    // adds $audioSource as a 2nd input and replaces the semantic audio output slot (+ -shortest unless disabled)
+    // composes with Watermark/concat without retaining their previous audio map
+new NormalizeLoudness(float $integratedLufs = -16.0, float $truePeakDbtp = -1.5, float $loudnessRangeLu = 11.0);
+    // -af loudnorm=I=..:TP=..:LRA=..; ranges: I [-70,-5], TP [-9,0], LRA [1,50]
+new BurnSubtitles(string $srtOrAss);
+    // -vf subtitles=filename=<escaped path>; path containing a single quote is REJECTED in the constructor
+new ExtractSubtitles(int $streamIndex = 0);
+    // -map 0:s:<streamIndex>; pipeline output path IS the subtitle file (like ExtractAudio for audio)
+new SelectStreams(?int $videoIndex = null, ?int $audioIndex = null, ?int $subtitleIndex = null, bool $optional = false);
+    // sets semantic 0:v:N / 0:a:N / 0:s:N output slots; optional adds '?'; at least one index required
+new PackageHls(int $segmentSeconds = 6, ?string $segmentFilenamePattern = null);
+    // -f hls -hls_time <n> -hls_playlist_type vod [-hls_segment_filename <pattern>]
+    // always VOD playlist type (keeps every segment + #EXT-X-ENDLIST); composes with Remux or Transcode
+new PackageDash(int $segmentSeconds = 5);
+    // -f dash -seg_duration <n>; window_size defaults to 0 (unlimited) in ffmpeg itself, no extra flag needed
+    // Default HLS/DASH sidecars use unique generation names and a hidden managed inventory;
+    // sidecars commit before the manifest. Custom HLS patterns keep consumer-selected names.
+new AddMetadata(array $tags);                  // -metadata key=value per tag; composes with Remux
+    // keys are WHITELISTED: title artist album album_artist composer genre track disc year date
+    // comment description language copyright publisher encoder; unknown key => InvalidArgumentException
+    // values are plain argv ('=', unicode, newlines safe); int values allowed
+AddArtwork::forAudio(string $image, bool $id3v2 = true); // cover for MP3 (default) — id3v2: false for M4A/FLAC
+AddArtwork::forVideo(string $image);           // cover for MP4/MKV: main video stays v:0, cover becomes v:1
+    // extra -i <image> + -map N:v + -c:v:<n> copy + -disposition:v:<n> attached_pic
+    // cover stream is stream-COPIED (JPEG=mjpeg, PNG=png) => composes with Remux;
+    // with a video Transcode add the artwork AFTER it (last matching -c wins per stream)
+    // one AddArtwork per pipeline; rejected with ExtractAudio (-vn discards the cover) —
+    // use Transcode(audioCodec: ...) + forAudio to extract audio WITH art
+
+// Preset\Presets — ready-made Pipelines for frequent tasks (download-compat lives here, not in core)
+use Rasuvaeff\MediaConverter\Preset\Presets;
+Presets::hlsToMp4(string $source): Pipeline;             // Remux() + -bsf:a aac_adtstoasc (ADTS->ASC fix for MP4)
+Presets::hlsToMp4Transcode(string $source): Pipeline;     // Transcode(videoCodec: 'libx264', audioCodec: 'aac')
+Presets::webMp4(string $source, int $videoBitrateKbps = 2500, int $audioBitrateKbps = 192): Pipeline;
+Presets::dashToMp4(string $source): Pipeline;             // Remux() (fMP4 segments need no bitstream filter)
+Presets::webM(string $source, int $videoBitrateKbps = 2500, int $audioBitrateKbps = 128): Pipeline;
+    // Transcode(videoCodec: 'libvpx-vp9', audioCodec: 'libopus', ...)
+Presets::mp3(string $source, int $bitrateKbps = 192): Pipeline; // ExtractAudio('libmp3lame', $bitrateKbps)
+Presets::aac(string $source, int $bitrateKbps = 128): Pipeline; // ExtractAudio('aac', $bitrateKbps)
+Presets::webThumbnail(string $source, Duration $at, int $width = 320): Pipeline;   // Thumbnail($at, $width)
+Presets::socialClip(string $source, Duration $from, Duration $to, int $maxWidth = 720): Pipeline;
+    // Trim($from, $to) + Scale(width: $maxWidth) + Transcode(videoCodec: 'libx264', audioCodec: 'aac')
+
+// MediaConverter — the engine (implements ConvertsMedia)
+use Rasuvaeff\MediaConverter\MediaConverter;
+use Rasuvaeff\MediaConverter\RunsProcess;
+use Rasuvaeff\MediaConverter\ProcessOutcome;
+use Rasuvaeff\MediaConverter\SymfonyProcessRunner;
+use Rasuvaeff\MediaConverter\FfprobeMediaInfo;
+$conv = new MediaConverter($bin, new SymfonyProcessRunner(), $bulkhead=null, $retry=null, $timeout=null, $idleTimeout=null, $prober=null);
+$conv->run($pipeline, 'out.mp4', $onProgress=null, $token=null); // ConversionResult | throws ConversionFailed | ConversionCancelled
+// retry wraps bulkhead (slot freed during backoff); BulkheadFullException propagates as itself;
+// only transient failures retry: MediaConverter::isTransientFailure(\Throwable): bool
+//   (NonZeroExit + stderr ~ HTTP 5xx / connection reset). Deterministic failures never retry.
+// ffmpeg writes into a staging directory beside outputPath. Failure removes staging and preserves
+// existing output; success commits all files. source === outputPath is safe.
+// A destination lock serializes concurrent writers; the manifest is replaced atomically last.
+// Retry exhaustion is rethrown as ConversionFailed (RetryExhausted is available as ->getPrevious()).
+// $prober (ProbesMedia, opt-in): each media input is probed ONCE per run(), before ffmpeg, NOT retried.
+//   Encrypted source (MediaInfo::isEncrypted()) => ConversionFailed(Drm) before ffmpeg starts.
+//   Concat probes every segment and sums durations; any unknown duration keeps progress indeterminate.
+//   Watermarks are not probed/timed; secondary audio is probed but is not a base timeline source.
+//   Trim/AnimatedPreview adjust duration; single-frame outputs and ReplaceAudio(shortest: true) are indeterminate.
+// All local input files, including secondary inputs, contribute to ConversionResult::inputBytes().
+// $onProgress (opt-in): when given, argv gains '-progress pipe:1 -nostats' (never otherwise);
+//   parses ffmpeg's machine-readable report stream from STDOUT only (stderr stays clean for
+//   error classification). Without $prober (or unknown duration) => indeterminate samples.
+
+// FfprobeMediaInfo — ProbesMedia over `ffprobe -print_format json -show_format -show_streams`
+$prober = new FfprobeMediaInfo($bin, new SymfonyProcessRunner(), $timeout=null);
+$prober->probe($source); // MediaInfo | throws ConversionFailed(ProbeFailed|Timeout|Drm|FfprobeNotExecutable)
+// DRM heuristic: MediaInfo::isEncrypted() true when combined stdout/stderr matches /decrypt/i
+// (ffprobe has no dedicated encrypted-stream flag); non-zero decrypt diagnostics throw Drm.
+// duration defaults to Duration::zero() when format.duration is absent/unparsable.
+// width/height/bitrate: 0 or non-numeric => null (treated as unknown, not a validation error).
+
+// RunsProcess — subprocess seam (mock in tests; ship SymfonyProcessRunner)
+interface RunsProcess {
+    // $onOutput: callable(string $type /* 'out'|'err' */, string $chunk): void
+    public function run(array $argv, Duration $timeout, Duration $idleTimeout, callable $onOutput): ProcessOutcome;
+}
+// ProcessOutcome: ->exitCode(int) ->stderrTail(string) ->timedOut(bool) ->isSuccess(): bool
+
+// ConvertsMedia (engine interface)
+interface ConvertsMedia {
+    public function run(Pipeline $pipeline, string $outputPath, ?callable $onProgress = null, ?CancellationToken $token = null): ConversionResult;
+    // $onProgress: callable(ProgressEvent): void ; $token: cooperative cancellation (throws ConversionCancelled)
+}
+
+// ProbesMedia (shipped impls: FfprobeMediaInfo, CachedProbesMedia)
+interface ProbesMedia { public function probe(string $source): MediaInfo; }
+
+// CachedProbesMedia — PSR-16 decorator over any ProbesMedia
+// psr/simple-cache ^3.0 is a SUGGEST (not required): install it + a concrete cache to use this class
+use Rasuvaeff\MediaConverter\CachedProbesMedia;
+$cached = new CachedProbesMedia($prober, $psr16Cache, $ttlSeconds = 86_400); // null ttl => backend default
+// key = 'rasuvaeff.media-converter.probe.' . xxh3(path|size|mtime) — dot-separated (PSR-16 reserves ':')
+// a changed local file gets a NEW key automatically; URLs degrade to path-only keys (TTL governs)
+// a garbage cache value (wrong type) is a miss, never an error
+
+// ConversionResult
+$r->outputPath();      // string
+$r->outputArtifacts(); // non-empty-list<string>; manifest + sidecars for HLS/DASH
+$r->elapsed();         // Duration
+$r->inputBytes(); $r->outputBytes(); // int; sums concat inputs / committed output artifacts
+$r->outputMebibytes(); // float
+$r->command();         // list<string>, exact ffmpeg argv used
+
+// MediaInfo
+$i->duration();        // Duration
+$i->width(); $i->height();          // ?int
+$i->videoCodec(); $i->audioCodec(); // ?string
+$i->bitrate();         // ?int
+$i->hasVideo(); $i->hasAudio(); $i->isEncrypted(); // bool
+
+// ConversionFailed extends \RuntimeException implements MediaConverterException
+$e->reason;            // ConversionFailureReason enum
+$e->exitCode;          // int
+$e->stderrTail();      // non-empty-string ('(empty)' fallback) — sole reader; $stderr is private
+// ConversionFailureReason: Timeout|NonZeroExit|NoInput|Drm|ProbeFailed|
+//   IncompatibleOperations|OutputFailed|FfmpegNotExecutable|FfprobeNotExecutable
+//   ->value: 'timeout'|'non-zero-exit'|... ; ->isPotentiallyTransient(): bool
+// MediaConverterException — marker interface on ConversionFailed + ConversionCancelled
+//   catch (MediaConverterException $e) handles every reachable failure in one clause.
+//   Internal \LogicException guards (impossible states) do NOT implement it.
+
+// ProgressEvent (from the engine callback)
+$ev = new ProgressEvent(fraction: 0.5, outTime: Duration::seconds(12.5), frame: 375, fps: 30.0, speed: 2.1);
+$ev->isDeterminate();  // bool — false when fraction unknown (no total duration)
+$ev->fraction();       // ?float [0,1]
+$ev->outTime();        // Duration
+$ev->frame(); $ev->fps(); $ev->speed(); // ?int / ?float / ?float
+$ev->phase();          // ConversionPhase: probing|running|committing|completed
+
+// Cooperative cancellation — pass the token as run()'s $token argument (no separate method)
+$token = new CancellationToken();
+$converter->run($pipeline, 'out.mp4', onProgress: null, token: $token);
+$token->cancel(); // ConversionCancelled; staging is rolled back. Checked between phases + before each output chunk.
+```
