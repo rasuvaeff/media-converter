@@ -15,6 +15,7 @@ crop, extract audio, remux — в `Pipeline`, который материали�
 команду ffmpeg. Никаких shell-строк: каждый путь — отдельный элемент argv.
 
 > Используете AI-ассистента? [llms.txt](llms.txt) — компактный API-справочник, который можно передать модели.
+> Проекты с Composer-плагином [llm/skills](https://github.com/roxblnfk/skills) дополнительно получают agent-скилл этого пакета в `.agents/skills/` автоматически при установке.
 
 ## Требования
 
