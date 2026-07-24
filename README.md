@@ -15,6 +15,7 @@ trim, scale, crop, extract audio, remux — into a `Pipeline` that renders the
 exact ffmpeg command. No shell strings; every path is a separate argv entry.
 
 > Using an AI coding assistant? [llms.txt](llms.txt) contains a compact API reference you can share with the model.
+> Projects using the [llm/skills](https://github.com/roxblnfk/skills) Composer plugin also get this package's agent skill synced into `.agents/skills/` automatically on install.
 
 ## Requirements
 
