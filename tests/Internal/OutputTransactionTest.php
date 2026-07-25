@@ -430,4 +430,30 @@ final class OutputTransactionTest
         Assert::false(is_file($own));
         Assert::true(is_file($lookalike));
     }
+
+    public function managedSweepDoesNotMatchTrailingNewlineInExtension(): void
+    {
+        // PCRE `$` matches before a trailing `\n`; a stale file whose name ends
+        // in ".ts\n" must not be reaped as a managed artifact of the matching
+        // stem. The pattern is anchored with `\z` to keep it whole-subject.
+        $stale = $this->directory . '/playlist-' . str_repeat('a', 16) . '-00001.ts' . "\n";
+        file_put_contents($stale, 'stale');
+
+        $output = $this->directory . '/playlist.m3u8';
+        $transaction = new OutputTransaction($output, OutputLayout::hls(null));
+        $argv = $transaction->rewriteArgv(['ffmpeg', $transaction->stagedOutputPath()]);
+        $index = array_search('-hls_segment_filename', $argv, true);
+
+        if (!is_int($index)) {
+            throw new \LogicException('Missing generated HLS pattern');
+        }
+
+        $stagedSegment = sprintf($argv[$index + 1], 0);
+        file_put_contents($stagedSegment, 'hls segment');
+        file_put_contents($transaction->stagedOutputPath(), basename($stagedSegment) . "\n");
+        $transaction->commit();
+
+        Assert::true(is_file($stale));
+        @unlink($stale);
+    }
 }

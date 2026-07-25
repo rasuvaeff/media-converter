@@ -185,7 +185,7 @@ final readonly class FfprobeMediaInfo implements ProbesMedia
             return $data[$key] > 0 ? $data[$key] : null;
         }
 
-        if (isset($data[$key]) && is_string($data[$key]) && preg_match('/^\d+$/', $data[$key]) === 1) {
+        if (isset($data[$key]) && is_string($data[$key]) && preg_match('/^\d+\z/', $data[$key]) === 1) {
             $int = (int) $data[$key];
 
             return $int > 0 ? $int : null;

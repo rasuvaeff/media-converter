@@ -413,7 +413,7 @@ final class OutputTransaction
         // same-stem DASH destination's .m4s segments, and vice versa.
         $extension = $this->layout->isDash() ? 'm4s' : 'ts';
 
-        return preg_match(sprintf('/^%s-[a-f0-9]{16}-.+\.%s$/', $stem, $extension), basename($artifact)) === 1;
+        return preg_match(sprintf('/^%s-[a-f0-9]{16}-.+\.%s\z/', $stem, $extension), basename($artifact)) === 1;
     }
 
     /** @param array<string, string> $targets */
