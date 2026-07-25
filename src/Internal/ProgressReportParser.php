@@ -84,7 +84,7 @@ final class ProgressReportParser
     {
         $value = $this->fields[$key] ?? null;
 
-        return $value !== null && preg_match('/^-?\d+$/', $value) === 1 ? (int) $value : null;
+        return $value !== null && preg_match('/^-?\d+\z/', $value) === 1 ? (int) $value : null;
     }
 
     private function floatField(string $key): ?float

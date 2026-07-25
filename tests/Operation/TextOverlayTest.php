@@ -105,4 +105,10 @@ final class TextOverlayTest
     {
         new TextOverlay('t', fontColor: 'rgb(0,0,0)');
     }
+
+    #[ExpectException(\InvalidArgumentException::class)]
+    public function rejectsFontColorWithTrailingNewline(): void
+    {
+        new TextOverlay('t', fontColor: "white\n");
+    }
 }

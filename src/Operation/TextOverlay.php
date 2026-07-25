@@ -20,7 +20,7 @@ use Rasuvaeff\MediaConverter\Internal\FilterGraph;
  */
 final readonly class TextOverlay implements OperationInterface
 {
-    private const string VALID_COLOR_PATTERN = '/^[A-Za-z0-9#@.]+$/';
+    private const string VALID_COLOR_PATTERN = '/^[A-Za-z0-9#@.]+\z/';
 
     public function __construct(
         private string $text,
