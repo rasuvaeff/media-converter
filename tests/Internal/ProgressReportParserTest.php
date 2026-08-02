@@ -5,12 +5,14 @@ declare(strict_types=1);
 namespace Rasuvaeff\MediaConverter\Tests\Internal;
 
 use Rasuvaeff\MediaConverter\Internal\ProgressReportParser;
+use Rasuvaeff\MediaConverter\Internal\ProgressSample;
 use Testo\Assert;
 use Testo\Codecov\Covers;
 use Testo\Test;
 
 #[Test]
 #[Covers(ProgressReportParser::class)]
+#[Covers(ProgressSample::class)]
 final class ProgressReportParserTest
 {
     public function parsesACompleteReportInOneChunk(): void
