@@ -21,7 +21,7 @@ final class SymfonyProcessRunnerTest
         $seen = ['out' => '', 'err' => ''];
 
         $outcome = $runner->run(
-            ['/bin/sh', '-c', 'printf hello; printf oops 1>&2; exit 0'],
+            ['php', '-r', 'fwrite(STDOUT, "hello"); fwrite(STDERR, "oops"); exit(0);'],
             Duration::seconds(10),
             Duration::seconds(10),
             static function (string $type, string $chunk) use (&$seen): void {
@@ -40,7 +40,7 @@ final class SymfonyProcessRunnerTest
     public function reportsANonZeroExitCode(): void
     {
         $outcome = (new SymfonyProcessRunner())->run(
-            ['/bin/sh', '-c', 'printf boom 1>&2; exit 3'],
+            ['php', '-r', 'fwrite(STDERR, "boom"); exit(3);'],
             Duration::seconds(10),
             Duration::seconds(10),
             static fn(string $type, string $chunk): null => null,
@@ -54,7 +54,7 @@ final class SymfonyProcessRunnerTest
     public function killsAndFlagsAProcessThatExceedsTheWallClockTimeout(): void
     {
         $outcome = (new SymfonyProcessRunner())->run(
-            ['/bin/sh', '-c', 'sleep 5'],
+            ['php', '-r', 'sleep(5);'],
             Duration::millis(150),
             Duration::seconds(10),
             static fn(string $type, string $chunk): null => null,
@@ -70,7 +70,7 @@ final class SymfonyProcessRunnerTest
         // an idle-timeout kill (no output for idleTimeout, distinct from
         // total wall-clock time) can end this run quickly.
         $outcome = (new SymfonyProcessRunner())->run(
-            ['/bin/sh', '-c', 'sleep 2'],
+            ['php', '-r', 'sleep(2);'],
             Duration::seconds(10),
             Duration::millis(300),
             static fn(string $type, string $chunk): null => null,
@@ -90,7 +90,7 @@ final class SymfonyProcessRunnerTest
 
         try {
             $runner->run(
-                ['/bin/sh', '-c', 'echo go; sleep 30'],
+                ['php', '-r', 'fwrite(STDOUT, "go\n"); sleep(30);'],
                 Duration::seconds(60),
                 Duration::zero(),
                 static function (): void {
@@ -129,26 +129,57 @@ final class SymfonyProcessRunnerTest
         } catch (\RuntimeException $caught) {
         }
 
-        // SIGKILL delivery is asynchronous — poll briefly instead of racing
-        // it; a leaked child blocks for ~30s, far beyond the poll window. The
-        // `[m]arker` bracket keeps pgrep's own `sh -c` wrapper (whose cmdline
-        // also holds the marker) from self-matching.
-        $pattern = sprintf('[%s]%s', $marker[0], substr($marker, 1));
-        $alive = '';
+        // SIGKILL/TerminateProcess delivery is asynchronous — poll briefly
+        // instead of racing it; a leaked child blocks for ~30s, far beyond
+        // the poll window.
+        $alive = true;
 
         foreach (range(1, 40) as $_attempt) {
-            $alive = trim((string) shell_exec(sprintf('pgrep -f "%s"', $pattern)));
+            $alive = self::isProcessAlive($marker);
 
-            if ($alive === '') {
+            if (!$alive) {
                 break;
             }
 
             usleep(50_000);
         }
 
-        shell_exec(sprintf('pkill -9 -f "%s" 2>/dev/null', $pattern));
+        self::killProcessByMarker($marker);
         Assert::notNull($caught);
-        Assert::same($alive, '');
+        Assert::false($alive);
+    }
+
+    private static function isProcessAlive(string $marker): bool
+    {
+        if (\PHP_OS_FAMILY === 'Windows') {
+            $output = (string) shell_exec(sprintf(
+                'powershell -NoProfile -Command "Get-CimInstance Win32_Process | Where-Object { $_.Name -eq \'php.exe\' -and $_.CommandLine -like \'*%s*\' } | Select-Object -ExpandProperty ProcessId"',
+                $marker,
+            ));
+
+            return trim($output) !== '';
+        }
+
+        // The `[m]arker` bracket keeps pgrep's own `sh -c` wrapper (whose
+        // cmdline also holds the marker) from self-matching.
+        $pattern = sprintf('[%s]%s', $marker[0], substr($marker, 1));
+
+        return trim((string) shell_exec(sprintf('pgrep -f "%s"', $pattern))) !== '';
+    }
+
+    private static function killProcessByMarker(string $marker): void
+    {
+        if (\PHP_OS_FAMILY === 'Windows') {
+            shell_exec(sprintf(
+                'powershell -NoProfile -Command "Get-CimInstance Win32_Process | Where-Object { $_.Name -eq \'php.exe\' -and $_.CommandLine -like \'*%s*\' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }"',
+                $marker,
+            ));
+
+            return;
+        }
+
+        $pattern = sprintf('[%s]%s', $marker[0], substr($marker, 1));
+        shell_exec(sprintf('pkill -9 -f "%s" 2>/dev/null', $pattern));
     }
 
     public function killsATermIgnoringProcessWithoutAGracePeriodWhenTheCallbackThrows(): void
@@ -158,6 +189,15 @@ final class SymfonyProcessRunnerTest
         // that SIGKILL, so any non-zero grace period (e.g. stop(1)) would
         // stall the unwind for the full period — observable as elapsed time
         // around run() with a wide margin (~1s mutant vs ~0.05s original).
+        //
+        // No Windows equivalent: Symfony\Process::stop() on Windows always
+        // force-kills via taskkill (TerminateProcess), which cannot be
+        // trapped/ignored the way SIGTERM can — there is no "ignores the
+        // termination signal" scenario to construct there.
+        if (\PHP_OS_FAMILY === 'Windows') {
+            return;
+        }
+
         $runner = new SymfonyProcessRunner();
         $caught = null;
         $startedAt = microtime(true);
@@ -188,7 +228,11 @@ final class SymfonyProcessRunnerTest
         // 'A's followed by all 8150 'B's — a value no single-operand or
         // swapped-concat mutation can coincidentally reproduce.
         $outcome = (new SymfonyProcessRunner())->run(
-            ['/bin/sh', '-c', "head -c 100 /dev/zero | tr '\\0' 'A' 1>&2; sleep 0.2; head -c 8150 /dev/zero | tr '\\0' 'B' 1>&2"],
+            [
+                'php',
+                '-r',
+                'fwrite(STDERR, str_repeat("A", 100)); usleep(200_000); fwrite(STDERR, str_repeat("B", 8_150));',
+            ],
             Duration::seconds(10),
             Duration::seconds(10),
             static fn(string $type, string $chunk): null => null,

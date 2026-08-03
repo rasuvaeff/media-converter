@@ -79,17 +79,17 @@ final class FfmpegBinaryTest
 
     public function ffmpegOnlyPreflightDoesNotRequireFfprobe(): void
     {
-        $binary = new FfmpegBinary('/bin/sh', '/definitely/missing/ffprobe');
+        $binary = new FfmpegBinary(PHP_BINARY, '/definitely/missing/ffprobe');
 
         $binary->assertFfmpegExecutable();
 
-        Assert::same($binary->ffmpegPath(), '/bin/sh');
+        Assert::same($binary->ffmpegPath(), PHP_BINARY);
     }
 
     public function assertExecutableThrowsWhenFfprobeMissing(): void
     {
         $binary = new FfmpegBinary(
-            ffmpegPath: '/bin/sh',
+            ffmpegPath: PHP_BINARY,
             ffprobePath: '/definitely/not/installed/ffprobe-' . \uniqid('', true),
         );
 
@@ -104,18 +104,18 @@ final class FfmpegBinaryTest
 
     public function ffprobeOnlyPreflightDoesNotRequireFfmpeg(): void
     {
-        $binary = new FfmpegBinary('/definitely/missing/ffmpeg', '/bin/sh');
+        $binary = new FfmpegBinary('/definitely/missing/ffmpeg', PHP_BINARY);
 
         $binary->assertFfprobeExecutable();
 
-        Assert::same($binary->ffprobePath(), '/bin/sh');
+        Assert::same($binary->ffprobePath(), PHP_BINARY);
     }
 
     public function assertExecutablePassesForValidBinaries(): void
     {
         $binary = new FfmpegBinary(
-            ffmpegPath: '/bin/sh',
-            ffprobePath: '/bin/sh',
+            ffmpegPath: PHP_BINARY,
+            ffprobePath: PHP_BINARY,
         );
 
         $binary->assertExecutable();
@@ -132,7 +132,7 @@ final class FfmpegBinaryTest
         \chmod($path, 0o644);
 
         try {
-            $binary = new FfmpegBinary(ffmpegPath: $path, ffprobePath: '/bin/sh');
+            $binary = new FfmpegBinary(ffmpegPath: $path, ffprobePath: PHP_BINARY);
 
             try {
                 $binary->assertExecutable();
@@ -151,7 +151,7 @@ final class FfmpegBinaryTest
         \chmod($path, 0o644);
 
         try {
-            $binary = new FfmpegBinary(ffmpegPath: '/bin/sh', ffprobePath: $path);
+            $binary = new FfmpegBinary(ffmpegPath: PHP_BINARY, ffprobePath: $path);
 
             try {
                 $binary->assertExecutable();

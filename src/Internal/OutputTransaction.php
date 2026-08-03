@@ -236,7 +236,7 @@ final class OutputTransaction
             return;
         }
 
-        if (!str_starts_with($directory, '/')) {
+        if (!self::isAbsolutePath($directory)) {
             $directory = (getcwd() ?: '.') . '/' . $directory;
         }
 
@@ -246,6 +246,18 @@ final class OutputTransaction
 
         $this->customHlsTargetDirectory = $directory;
         $this->customHlsPlaylistPrefix = rtrim(dirname($pattern), '/') . '/';
+    }
+
+    /**
+     * `dirname()` returns a native-separator path on every platform, so a
+     * leading `/` alone (POSIX) is not enough: Windows absolute paths start
+     * with a drive letter (`C:\` or `C:/`) or a UNC/rooted `\`.
+     */
+    private static function isAbsolutePath(string $path): bool
+    {
+        return str_starts_with($path, '/')
+            || str_starts_with($path, '\\')
+            || (bool) preg_match('#^[A-Za-z]:[/\\\\]#', $path);
     }
 
     private function rewriteCustomHlsPlaylist(): void

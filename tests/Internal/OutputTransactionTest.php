@@ -436,6 +436,15 @@ final class OutputTransactionTest
         // PCRE `$` matches before a trailing `\n`; a stale file whose name ends
         // in ".ts\n" must not be reaped as a managed artifact of the matching
         // stem. The pattern is anchored with `\z` to keep it whole-subject.
+        //
+        // No Windows equivalent: the Win32 file APIs PHP's file_put_contents()
+        // goes through reject a trailing control character in a filename, so
+        // the fixture itself cannot be created there — this is a POSIX
+        // filename-byte-freedom test, not a regex-anchor test on that OS.
+        if (\PHP_OS_FAMILY === 'Windows') {
+            return;
+        }
+
         $stale = $this->directory . '/playlist-' . str_repeat('a', 16) . '-00001.ts' . "\n";
         file_put_contents($stale, 'stale');
 

@@ -18,7 +18,7 @@ final class SymfonyProcessRunnerTest
     {
         $stdout = '';
         $outcome = (new SymfonyProcessRunner())->run(
-            ['/bin/sh', '-c', 'printf public-runner'],
+            ['php', '-r', 'fwrite(STDOUT, "public-runner");'],
             Duration::seconds(2),
             Duration::zero(),
             static function (string $type, string $chunk) use (&$stdout): void {
