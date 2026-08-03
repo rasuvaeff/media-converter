@@ -357,6 +357,19 @@ false negative.
   transient-detection stays reliable when progress is routed to stdout.
 - **PHP 8.3 syntax.** The matrix includes 8.3, so `new Foo()->bar()` (no
   parens) is a parse error — write `(new Foo())->bar()`.
+- **CI runs a Windows job too** (`build.yml`, single PHP version, Unit suite
+  only). `OutputTransaction::isAbsolutePath()` exists because `dirname()`
+  returns a native-separator path — a bare `str_starts_with($p, '/')` check
+  misclassifies every Windows absolute path (`C:\...`) as relative, corrupting
+  the custom-HLS-target directory. Don't revert it back to the POSIX-only
+  check. Two tests (`OutputTransactionTest::managedSweepDoesNotMatchTrailingNewlineInExtension`,
+  `SymfonyProcessRunnerTest::killsATermIgnoringProcessWithoutAGracePeriodWhenTheCallbackThrows`)
+  early-return on `PHP_OS_FAMILY === 'Windows'` — the first needs a filename
+  ending in `\n`, which Win32 file APIs reject; the second needs a SIGTERM the
+  child ignores, and Windows process termination (`taskkill`/`TerminateProcess`)
+  has no equivalent "ignorable" signal. Subprocess-behavior tests spawn
+  `['php', '-r', '...']`, never `/bin/sh` — the latter doesn't exist on
+  `windows-latest`.
 - **`ProbesMedia::probe()`'s `$source` param is plain `string`, NOT
   `@param non-empty-string`.** Psalm treats an interface's docblock param type
   as binding on implementations, so a `non-empty-string` contract would make
