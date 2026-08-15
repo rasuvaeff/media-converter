@@ -61,14 +61,19 @@ final class ProgressFractionTest
     }
 
     #[Property(runs: 200)]
-    public function fractionIsAlwaysClampedToZeroOneEvenPastTheTotal(int $outTimeMicros, int $totalMicros): void
+    public function fractionIsAlwaysClampedToZeroOneEvenPastTheTotal(int $totalMicros, int $percentOfTotal): void
     {
+        // Out-time is built as a share of the total rather than drawn from an
+        // independent range. Two independent ranges made the overshoot a
+        // function of how the ranges happened to overlap: it was 86% of runs,
+        // and the coverage gate below caught exactly that.
+        $outTimeMicros = \intdiv($totalMicros * $percentOfTotal, 100);
         $fraction = ProgressFraction::compute(Duration::micros($outTimeMicros), Duration::micros($totalMicros));
 
         // The clamp exists for the overshoot ffmpeg produces near the end of a
         // run; a generator that never overshoots would leave `min(1.0, …)`
         // unexercised and the property still green.
-        Classify::cover($outTimeMicros > $totalMicros, 'past the total', 20.0);
+        Classify::cover($outTimeMicros > $totalMicros, 'past the total', 40.0);
         Classify::cover($outTimeMicros <= $totalMicros, 'within the total', 20.0);
 
         Assert::notNull($fraction);
@@ -81,8 +86,11 @@ final class ProgressFractionTest
     public static function fractionIsAlwaysClampedToZeroOneEvenPastTheTotalGenerators(): array
     {
         return [
-            'outTimeMicros' => Gen::intBetween(0, 1_000_000_000),
             'totalMicros' => Gen::intBetween(1, 200_000_000),
+            // A third of the draws land at or under the total, two thirds
+            // overshoot — the regime ffmpeg actually produces near the end of
+            // a run, and the one the clamp exists for.
+            'percentOfTotal' => Gen::intBetween(0, 300),
         ];
     }
 
@@ -91,10 +99,11 @@ final class ProgressFractionTest
      */
     public static function fractionIsAlwaysClampedToZeroOneEvenPastTheTotalExamples(): iterable
     {
-        yield 'nothing written yet' => [0, 1_000_000];
-        yield 'exactly complete' => [1_000_000, 1_000_000];
-        yield 'one microsecond past the total' => [1_000_001, 1_000_000];
-        yield 'the shortest possible total' => [500_000, 1];
+        yield 'nothing written yet' => [1_000_000, 0];
+        yield 'exactly complete' => [1_000_000, 100];
+        yield 'just past the total' => [1_000_000, 101];
+        yield 'triple the total' => [1_000_000, 300];
+        yield 'the shortest possible total' => [1, 300];
     }
 
     #[Property(runs: 200)]
