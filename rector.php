@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Rasuvaeff\RectorNamedLiterals\AddNameToLiteralArgumentRector;
 use Rector\Config\RectorConfig;
 use Rector\DeadCode\Rector\Property\RemoveUselessVarTagRector;
 
@@ -16,4 +17,5 @@ return RectorConfig::configure()
         // The `@var mixed $cached` on the PSR-16 get() assignment is required
         // by psalm (MixedAssignment) — the documented rector<->psalm conflict.
         RemoveUselessVarTagRector::class => [__DIR__ . '/src/CachedProbesMedia.php'],
-    ]);
+    ])
+    ->withRules([AddNameToLiteralArgumentRector::class]);

@@ -53,9 +53,9 @@ final class PresetsTest
     {
         $argv = Presets::webMp4('in.mov', 1_500, 128)->toArgv($this->binary, 'out.mp4');
 
-        Assert::true(in_array('libx264', $argv, true));
-        Assert::true(in_array('1500k', $argv, true));
-        Assert::true(in_array('128k', $argv, true));
+        Assert::true(in_array('libx264', $argv, strict: true));
+        Assert::true(in_array('1500k', $argv, strict: true));
+        Assert::true(in_array('128k', $argv, strict: true));
     }
 
     public function dashToMp4StreamCopiesWithoutABitstreamFilter(): void
@@ -86,7 +86,7 @@ final class PresetsTest
     {
         $argv = Presets::mp3('in.mp4')->toArgv($this->binary, 'out.mp3');
 
-        Assert::true(in_array('192k', $argv, true));
+        Assert::true(in_array('192k', $argv, strict: true));
     }
 
     public function aacUsesTheNativeAacEncoder(): void
@@ -105,7 +105,7 @@ final class PresetsTest
     {
         $argv = Presets::aac('in.mp4', 192)->toArgv($this->binary, 'out.m4a');
 
-        Assert::true(in_array('192k', $argv, true));
+        Assert::true(in_array('192k', $argv, strict: true));
     }
 
     public function webMUsesVp9AndOpus(): void
@@ -124,8 +124,8 @@ final class PresetsTest
     {
         $argv = Presets::webM('in.mp4', 1_000, 96)->toArgv($this->binary, 'out.webm');
 
-        Assert::true(in_array('1000k', $argv, true));
-        Assert::true(in_array('96k', $argv, true));
+        Assert::true(in_array('1000k', $argv, strict: true));
+        Assert::true(in_array('96k', $argv, strict: true));
     }
 
     public function webThumbnailSeeksAndScales(): void
@@ -145,7 +145,7 @@ final class PresetsTest
     {
         $argv = Presets::webThumbnail('in.mp4', Duration::seconds(5), 640)->toArgv($this->binary, 'out.jpg');
 
-        Assert::true(in_array('scale=640:-2', $argv, true));
+        Assert::true(in_array('scale=640:-2', $argv, strict: true));
     }
 
     public function socialClipTrimsScalesAndTranscodes(): void
@@ -168,6 +168,6 @@ final class PresetsTest
         $argv = Presets::socialClip('in.mp4', Duration::seconds(0), Duration::seconds(5), maxWidth: 480)
             ->toArgv($this->binary, 'out.mp4');
 
-        Assert::true(in_array('scale=480:-2', $argv, true));
+        Assert::true(in_array('scale=480:-2', $argv, strict: true));
     }
 }

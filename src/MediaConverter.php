@@ -374,6 +374,6 @@ final readonly class MediaConverter implements ConvertsMedia
 
     private function now(): float
     {
-        return microtime(true);
+        return microtime(as_float: true);
     }
 }

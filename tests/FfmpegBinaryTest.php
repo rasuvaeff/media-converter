@@ -63,13 +63,13 @@ final class FfmpegBinaryTest
     public function assertExecutableThrowsWhenFfmpegMissing(): void
     {
         $binary = new FfmpegBinary(
-            ffmpegPath: '/definitely/not/installed/ffmpeg-' . \uniqid('', true),
+            ffmpegPath: '/definitely/not/installed/ffmpeg-' . \uniqid('', more_entropy: true),
             ffprobePath: '/usr/bin/ffprobe',
         );
 
         try {
             $binary->assertExecutable();
-            Assert::true(false, 'Expected ConversionFailed');
+            Assert::true(actual: false, message: 'Expected ConversionFailed');
         } catch (ConversionFailed $e) {
             Assert::same($e->reason, ConversionFailureReason::FfmpegNotExecutable);
             Assert::same($e->exitCode, 127);
@@ -90,12 +90,12 @@ final class FfmpegBinaryTest
     {
         $binary = new FfmpegBinary(
             ffmpegPath: PHP_BINARY,
-            ffprobePath: '/definitely/not/installed/ffprobe-' . \uniqid('', true),
+            ffprobePath: '/definitely/not/installed/ffprobe-' . \uniqid('', more_entropy: true),
         );
 
         try {
             $binary->assertExecutable();
-            Assert::true(false, 'Expected ConversionFailed');
+            Assert::true(actual: false, message: 'Expected ConversionFailed');
         } catch (ConversionFailed $e) {
             Assert::same($e->reason, ConversionFailureReason::FfprobeNotExecutable);
             Assert::same($e->exitCode, 127);
@@ -120,7 +120,7 @@ final class FfmpegBinaryTest
 
         $binary->assertExecutable();
 
-        Assert::true(true);
+        Assert::true(actual: true);
     }
 
     public function assertExecutableThrowsForAnExistingNonExecutableFfmpegFile(): void
@@ -136,7 +136,7 @@ final class FfmpegBinaryTest
 
             try {
                 $binary->assertExecutable();
-                Assert::true(false, 'Expected ConversionFailed');
+                Assert::true(actual: false, message: 'Expected ConversionFailed');
             } catch (ConversionFailed $e) {
                 Assert::same($e->reason, ConversionFailureReason::FfmpegNotExecutable);
             }
@@ -155,7 +155,7 @@ final class FfmpegBinaryTest
 
             try {
                 $binary->assertExecutable();
-                Assert::true(false, 'Expected ConversionFailed');
+                Assert::true(actual: false, message: 'Expected ConversionFailed');
             } catch (ConversionFailed $e) {
                 Assert::same($e->reason, ConversionFailureReason::FfprobeNotExecutable);
             }
