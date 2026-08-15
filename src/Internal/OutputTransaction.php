@@ -144,7 +144,7 @@ final class OutputTransaction
             $this->rewriteCustomHlsPlaylist();
             $files = $this->stagedFiles();
 
-            if (!in_array($this->stagedOutputPath, $files, true)) {
+            if (!in_array($this->stagedOutputPath, $files, strict: true)) {
                 throw $this->failure('ffmpeg reported success but did not create the output file');
             }
 
@@ -236,7 +236,7 @@ final class OutputTransaction
             return;
         }
 
-        if (!self::isAbsolutePath($directory)) {
+        if (!$this->isAbsolutePath($directory)) {
             $directory = (getcwd() ?: '.') . '/' . $directory;
         }
 
@@ -253,7 +253,7 @@ final class OutputTransaction
      * leading `/` alone (POSIX) is not enough: Windows absolute paths start
      * with a drive letter (`C:\` or `C:/`) or a UNC/rooted `\`.
      */
-    private static function isAbsolutePath(string $path): bool
+    private function isAbsolutePath(string $path): bool
     {
         return str_starts_with($path, '/')
             || str_starts_with($path, '\\')

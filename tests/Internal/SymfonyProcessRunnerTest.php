@@ -85,7 +85,7 @@ final class SymfonyProcessRunnerTest
         // Cooperative cancellation unwinds run() via a callback exception —
         // the still-running subprocess must be stopped, not left to finish.
         $runner = new SymfonyProcessRunner();
-        $startedAt = microtime(true);
+        $startedAt = microtime(as_float: true);
         $caught = null;
 
         try {
@@ -101,7 +101,7 @@ final class SymfonyProcessRunnerTest
         }
 
         Assert::notNull($caught);
-        Assert::true(microtime(true) - $startedAt < 10.0);
+        Assert::true(microtime(as_float: true) - $startedAt < 10.0);
     }
 
     public function stopsTheChildBeforeTheCallbackExceptionLeavesRun(): void
@@ -135,7 +135,7 @@ final class SymfonyProcessRunnerTest
         $alive = true;
 
         foreach (range(1, 40) as $_attempt) {
-            $alive = self::isProcessAlive($marker);
+            $alive = $this->isProcessAlive($marker);
 
             if (!$alive) {
                 break;
@@ -144,12 +144,12 @@ final class SymfonyProcessRunnerTest
             usleep(50_000);
         }
 
-        self::killProcessByMarker($marker);
+        $this->killProcessByMarker($marker);
         Assert::notNull($caught);
         Assert::false($alive);
     }
 
-    private static function isProcessAlive(string $marker): bool
+    private function isProcessAlive(string $marker): bool
     {
         if (\PHP_OS_FAMILY === 'Windows') {
             $output = (string) shell_exec(sprintf(
@@ -167,7 +167,7 @@ final class SymfonyProcessRunnerTest
         return trim((string) shell_exec(sprintf('pgrep -f "%s"', $pattern))) !== '';
     }
 
-    private static function killProcessByMarker(string $marker): void
+    private function killProcessByMarker(string $marker): void
     {
         if (\PHP_OS_FAMILY === 'Windows') {
             shell_exec(sprintf(
@@ -200,7 +200,7 @@ final class SymfonyProcessRunnerTest
 
         $runner = new SymfonyProcessRunner();
         $caught = null;
-        $startedAt = microtime(true);
+        $startedAt = microtime(as_float: true);
 
         try {
             $runner->run(
@@ -215,7 +215,7 @@ final class SymfonyProcessRunnerTest
         }
 
         Assert::notNull($caught);
-        Assert::true(microtime(true) - $startedAt < 0.9);
+        Assert::true(microtime(as_float: true) - $startedAt < 0.9);
     }
 
     public function accumulatesStderrChunksInWriteOrderAndTruncatesFromTheFront(): void

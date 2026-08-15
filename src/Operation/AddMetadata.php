@@ -36,7 +36,7 @@ final readonly class AddMetadata implements OperationInterface
         }
 
         foreach (array_keys($tags) as $key) {
-            if (!in_array($key, self::WHITELISTED_KEYS, true)) {
+            if (!in_array($key, self::WHITELISTED_KEYS, strict: true)) {
                 throw new \InvalidArgumentException(sprintf('Unknown metadata key "%s"', $key));
             }
         }

@@ -684,7 +684,7 @@ final class RealFfmpegIntegrationTest
             throw new \RuntimeException('ffprobe failed: ' . $outcome->stderrTail);
         }
 
-        return (array) json_decode($stdout, true, flags: JSON_THROW_ON_ERROR);
+        return (array) json_decode($stdout, associative: true, flags: JSON_THROW_ON_ERROR);
     }
 
     private function hasAttachedPicture(string $path): bool

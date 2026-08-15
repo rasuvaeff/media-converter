@@ -85,8 +85,8 @@ final class PipelineTest
     {
         $argv = Pipeline::from('in.ts')->add(new Remux())->toArgv($this->binary, 'out.mp4');
 
-        Assert::true(in_array('-c', $argv, true));
-        Assert::same($argv[array_search('-c', $argv, true) + 1], 'copy');
+        Assert::true(in_array('-c', $argv, strict: true));
+        Assert::same($argv[array_search('-c', $argv, strict: true) + 1], 'copy');
     }
 
     public function filtersAreJoinedIntoASingleVfChainInInsertionOrder(): void
@@ -97,7 +97,7 @@ final class PipelineTest
             ->add(new Fps(30))
             ->toArgv($this->binary, 'out.mp4');
 
-        $vf = $argv[array_search('-vf', $argv, true) + 1];
+        $vf = $argv[array_search('-vf', $argv, strict: true) + 1];
         Assert::same($vf, 'scale=1280:-2,crop=640:480:10:20,fps=30');
     }
 
@@ -107,8 +107,8 @@ final class PipelineTest
         $withScale = $base->add(new Scale(width: 640));
 
         // The base pipeline is untouched: no -vf.
-        Assert::false(in_array('-vf', $base->toArgv($this->binary, 'out.mp4'), true));
-        Assert::true(in_array('-vf', $withScale->toArgv($this->binary, 'out.mp4'), true));
+        Assert::false(in_array('-vf', $base->toArgv($this->binary, 'out.mp4'), strict: true));
+        Assert::true(in_array('-vf', $withScale->toArgv($this->binary, 'out.mp4'), strict: true));
     }
 
     public function streamCopyWithAFilterIsRejectedBeforeRunning(): void
@@ -195,7 +195,7 @@ final class PipelineTest
             ->add(new Trim(Duration::seconds(1)))
             ->toArgv($this->binary, 'out.mp4');
 
-        Assert::true(in_array('-ss', $argv, true));
+        Assert::true(in_array('-ss', $argv, strict: true));
     }
 
     public function streamCopyComposesWithMetadataTags(): void
@@ -206,8 +206,8 @@ final class PipelineTest
             ->add(new AddMetadata(['title' => 'T']))
             ->toArgv($this->binary, 'out.mp4');
 
-        Assert::true(in_array('-metadata', $argv, true));
-        Assert::true(in_array('title=T', $argv, true));
+        Assert::true(in_array('-metadata', $argv, strict: true));
+        Assert::true(in_array('title=T', $argv, strict: true));
     }
 
     public function streamCopyComposesWithCoverArt(): void
@@ -219,8 +219,8 @@ final class PipelineTest
             ->add(AddArtwork::forVideo('cover.jpg'))
             ->toArgv($this->binary, 'out.mp4');
 
-        Assert::true(in_array('-disposition:v:1', $argv, true));
-        Assert::true(in_array('-c', $argv, true));
+        Assert::true(in_array('-disposition:v:1', $argv, strict: true));
+        Assert::true(in_array('-c', $argv, strict: true));
     }
 
     public function transcodeThenCoverArtKeepsTheCoverCopyAfterTheCodec(): void
@@ -232,7 +232,7 @@ final class PipelineTest
             ->add(AddArtwork::forVideo('cover.jpg'))
             ->toArgv($this->binary, 'out.mp4');
 
-        Assert::true(array_search('-c:v:1', $argv, true) > array_search('-c:v', $argv, true));
+        Assert::true(array_search('-c:v:1', $argv, strict: true) > array_search('-c:v', $argv, strict: true));
     }
 
     public function watermarkComposesWithCoverArt(): void
@@ -252,7 +252,7 @@ final class PipelineTest
         // Composed video is v:0, the cover stays v:1 — the disposition index
         // holds even when the main video comes from the complex graph.
         Assert::same($maps, ['[wmout]', '0:a?', '2:v']);
-        Assert::true(in_array('-disposition:v:1', $argv, true));
+        Assert::true(in_array('-disposition:v:1', $argv, strict: true));
     }
 
     public function twoCoverArtOperationsAreRejected(): void
@@ -306,7 +306,7 @@ final class PipelineTest
         }
 
         Assert::same($maps, ['0:a', '1:v']);
-        Assert::true(in_array('-id3v2_version', $argv, true));
+        Assert::true(in_array('-id3v2_version', $argv, strict: true));
     }
 
     public function videoTranscodeFollowedByArtworkComposes(): void
@@ -318,7 +318,7 @@ final class PipelineTest
             ->add(AddArtwork::forVideo('cover.jpg'))
             ->toArgv($this->binary, 'out.mp4');
 
-        $videoCodecIndex = array_search('-c:v', $argv, true);
+        $videoCodecIndex = array_search('-c:v', $argv, strict: true);
         $coverCodecIndex = null;
 
         foreach ($argv as $index => $argument) {
@@ -375,7 +375,7 @@ final class PipelineTest
             ->toArgv($this->binary, 'out.mp4');
 
         Assert::same(array_slice($argv, 4, 3), ['-ss', '30', '-i']);
-        Assert::true(in_array('copy', $argv, true));
+        Assert::true(in_array('copy', $argv, strict: true));
     }
 
     public function concatWithAFastSeekTrimIsRejected(): void
@@ -422,7 +422,7 @@ final class PipelineTest
             ->add(new AnimatedPreview(Duration::seconds(0), Duration::seconds(1)))
             ->toArgv($this->binary, 'out.gif');
 
-        Assert::true(in_array('-vf', $argv, true));
+        Assert::true(in_array('-vf', $argv, strict: true));
     }
 
     public function anExclusiveVideoGraphWithAnotherVideoFilterIsRejected(): void
@@ -448,8 +448,8 @@ final class PipelineTest
             ->add(new Watermark('logo.png'))
             ->toArgv($this->binary, 'out.mp4');
 
-        Assert::true(in_array('-filter_complex', $argv, true));
-        Assert::false(in_array('-vf', $argv, true));
+        Assert::true(in_array('-filter_complex', $argv, strict: true));
+        Assert::false(in_array('-vf', $argv, strict: true));
     }
 
     public function aMultiInputOperationComposesWithAPlainAudioFilter(): void
@@ -459,8 +459,8 @@ final class PipelineTest
             ->add(new NormalizeLoudness())
             ->toArgv($this->binary, 'out.mp4');
 
-        Assert::true(in_array('-filter_complex', $argv, true));
-        Assert::true(in_array('-af', $argv, true));
+        Assert::true(in_array('-filter_complex', $argv, strict: true));
+        Assert::true(in_array('-af', $argv, strict: true));
     }
 
     public function aMultiInputOperationWithAPlainVideoFilterIsRejected(): void
@@ -559,8 +559,8 @@ final class PipelineTest
             ->add(new Transcode(videoCodec: 'libx264'))
             ->toArgv($this->binary, 'out.mp4');
 
-        Assert::true(in_array('-filter_complex', $argv, true));
-        Assert::true(in_array('-c:v', $argv, true));
+        Assert::true(in_array('-filter_complex', $argv, strict: true));
+        Assert::true(in_array('-c:v', $argv, strict: true));
     }
 
     public function concatWithAPlainVideoFilterOperationIsRejected(): void
@@ -743,16 +743,16 @@ final class PipelineTest
         // mistaken for video-side ones by the terminal-output validation.
         $argv = Pipeline::from('in.mp4')->add(new ExtractAudio())->toArgv($this->binary, 'out.mp3');
 
-        Assert::true(in_array('-c:a', $argv, true));
-        Assert::true(in_array('-b:a', $argv, true));
-        Assert::false(in_array('-c:v', $argv, true));
+        Assert::true(in_array('-c:a', $argv, strict: true));
+        Assert::true(in_array('-b:a', $argv, strict: true));
+        Assert::false(in_array('-c:v', $argv, strict: true));
     }
 
     public function subtitleOnlyOutputComposesWhenNothingTargetsAnotherStreamKind(): void
     {
         $argv = Pipeline::from('in.mkv')->add(new ExtractSubtitles(streamIndex: 1))->toArgv($this->binary, 'out.srt');
 
-        Assert::true(in_array('0:s:1', $argv, true));
+        Assert::true(in_array('0:s:1', $argv, strict: true));
     }
 
     public function terminalConflictReportsTheOwningOperation(): void
@@ -788,8 +788,8 @@ final class PipelineTest
         Assert::same($maps, ['[outv]', '2:a']);
         // The segments' own audio pads are dropped (a=0): emitting a=1 would
         // leave the [outa] label unconnected, which ffmpeg rejects outright.
-        Assert::true(in_array('[0:v][1:v]concat=n=2:v=1:a=0[outv]', $argv, true));
-        Assert::false(in_array('[0:v][0:a][1:v][1:a]concat=n=2:v=1:a=1[outv][outa]', $argv, true));
+        Assert::true(in_array('[0:v][1:v]concat=n=2:v=1:a=0[outv]', $argv, strict: true));
+        Assert::false(in_array('[0:v][0:a][1:v][1:a]concat=n=2:v=1:a=1[outv][outa]', $argv, strict: true));
     }
 
     public function concatAndAudioSelectionDropSegmentAudioPads(): void
@@ -806,7 +806,7 @@ final class PipelineTest
         }
 
         Assert::same($maps, ['[outv]', '0:a:1']);
-        Assert::true(in_array('[0:v][1:v]concat=n=2:v=1:a=0[outv]', $argv, true));
+        Assert::true(in_array('[0:v][1:v]concat=n=2:v=1:a=0[outv]', $argv, strict: true));
     }
 
     public function concatWithAPlainAudioFilterOperationIsRejected(): void
@@ -918,7 +918,7 @@ final class PipelineTest
             ->add(new AnimatedPreview(Duration::seconds(3), Duration::seconds(4)))
             ->toArgv($this->binary, 'out.gif');
 
-        Assert::true(in_array('-ss', $argv, true));
+        Assert::true(in_array('-ss', $argv, strict: true));
     }
 
     #[ExpectException(\InvalidArgumentException::class)]
@@ -956,7 +956,7 @@ final class PipelineTest
         }
 
         $argv = $pipeline->toArgv($this->binary, 'out.mp4');
-        $vf = $argv[array_search('-vf', $argv, true) + 1];
+        $vf = $argv[array_search('-vf', $argv, strict: true) + 1];
 
         Assert::same(explode(',', $vf), $expected);
     }
@@ -967,6 +967,20 @@ final class PipelineTest
     public static function filterChainPreservesOperationOrderGenerators(): array
     {
         return ['kinds' => Gen::nonEmptyArrayOf(Gen::intBetween(0, 2), 6)];
+    }
+
+    /**
+     * @return iterable<string, array{list<int>}>
+     */
+    public static function filterChainPreservesOperationOrderExamples(): iterable
+    {
+        // A single filter is where a join could get away with emitting no
+        // separator at all; two of the same kind is where an implementation
+        // that keyed the chain by filter name would collapse them.
+        yield 'one filter' => [[0]];
+        yield 'two filters of the same kind' => [[1, 1]];
+        yield 'each kind once, in order' => [[0, 1, 2]];
+        yield 'the same kinds in reverse' => [[2, 1, 0]];
     }
 
     /**

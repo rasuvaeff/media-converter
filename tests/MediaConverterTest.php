@@ -781,7 +781,7 @@ final class MediaConverterTest
         $converter = new MediaConverter(FfmpegBinary::default(), $runner);
 
         $converter->run(Pipeline::from('in.mp4'), $this->output);
-        Assert::false(in_array('-progress', $runner->calls[0], true));
+        Assert::false(in_array('-progress', $runner->calls[0], strict: true));
 
         $converter->run(Pipeline::from('in.mp4'), $this->output, onProgress: static function (): void {});
         // Exact position: spliced right after argv[0] (the ffmpeg path), never

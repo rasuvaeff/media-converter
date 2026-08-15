@@ -65,7 +65,7 @@ final class AddArtworkTest
         $spec->addInput('in.flac');
         AddArtwork::forAudio('cover.png', id3v2: false)->applyTo($spec);
 
-        Assert::false(in_array('-id3v2_version', $spec->outputOptions(), true));
+        Assert::false(in_array('-id3v2_version', $spec->outputOptions(), strict: true));
     }
 
     public function referencesTheCorrectInputIndexWhenNotSecond(): void

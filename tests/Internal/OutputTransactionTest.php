@@ -134,7 +134,7 @@ final class OutputTransactionTest
         $output = $this->directory . '/playlist.m3u8';
         $first = new OutputTransaction($output, OutputLayout::hls(null));
         $firstArgv = $first->rewriteArgv(['ffmpeg', $first->stagedOutputPath()]);
-        $firstIndex = array_search('-hls_segment_filename', $firstArgv, true);
+        $firstIndex = array_search('-hls_segment_filename', $firstArgv, strict: true);
 
         if (!is_int($firstIndex)) {
             throw new \LogicException('Missing generated HLS pattern');
@@ -149,7 +149,7 @@ final class OutputTransactionTest
 
         $second = new OutputTransaction($output, OutputLayout::hls(null));
         $secondArgv = $second->rewriteArgv(['ffmpeg', $second->stagedOutputPath()]);
-        $secondIndex = array_search('-hls_segment_filename', $secondArgv, true);
+        $secondIndex = array_search('-hls_segment_filename', $secondArgv, strict: true);
 
         if (!is_int($secondIndex)) {
             throw new \LogicException('Missing generated HLS pattern');
@@ -192,7 +192,7 @@ final class OutputTransactionTest
         $output = $this->directory . '/video.m3u8';
         $transaction = new OutputTransaction($output, OutputLayout::hls(null));
         $argv = $transaction->rewriteArgv(['ffmpeg', $transaction->stagedOutputPath()]);
-        $index = array_search('-hls_segment_filename', $argv, true);
+        $index = array_search('-hls_segment_filename', $argv, strict: true);
 
         if (!is_int($index)) {
             throw new \LogicException('Missing generated HLS pattern');
@@ -212,9 +212,9 @@ final class OutputTransactionTest
         $transaction = new OutputTransaction($output, OutputLayout::dash());
         $argv = $transaction->rewriteArgv(['ffmpeg', $transaction->stagedOutputPath()]);
 
-        Assert::true(in_array('-init_seg_name', $argv, true));
-        Assert::true(in_array('-media_seg_name', $argv, true));
-        $initIndex = array_search('-init_seg_name', $argv, true);
+        Assert::true(in_array('-init_seg_name', $argv, strict: true));
+        Assert::true(in_array('-media_seg_name', $argv, strict: true));
+        $initIndex = array_search('-init_seg_name', $argv, strict: true);
 
         if (!is_int($initIndex)) {
             throw new \LogicException('Missing generated DASH init name');
@@ -321,7 +321,7 @@ final class OutputTransactionTest
         $output = $this->directory . '/playlist.m3u8';
         $transaction = new OutputTransaction($output, OutputLayout::hls(null));
         $argv = $transaction->rewriteArgv(['ffmpeg', $transaction->stagedOutputPath()]);
-        $index = array_search('-hls_segment_filename', $argv, true);
+        $index = array_search('-hls_segment_filename', $argv, strict: true);
 
         if (!is_int($index)) {
             throw new \LogicException('Missing generated HLS pattern');
@@ -350,7 +350,7 @@ final class OutputTransactionTest
         mkdir($this->directory . '/.playlist.m3u8.media-converter.json');
         $transaction = new OutputTransaction($output, OutputLayout::hls(null));
         $argv = $transaction->rewriteArgv(['ffmpeg', $transaction->stagedOutputPath()]);
-        $index = array_search('-hls_segment_filename', $argv, true);
+        $index = array_search('-hls_segment_filename', $argv, strict: true);
 
         if (!is_int($index)) {
             throw new \LogicException('Missing generated HLS pattern');
@@ -387,7 +387,7 @@ final class OutputTransactionTest
         $output = $this->directory . '/playlist.m3u8';
         $transaction = new OutputTransaction($output, OutputLayout::hls(null));
         $argv = $transaction->rewriteArgv(['ffmpeg', $transaction->stagedOutputPath()]);
-        $index = array_search('-hls_segment_filename', $argv, true);
+        $index = array_search('-hls_segment_filename', $argv, strict: true);
 
         if (!is_int($index)) {
             throw new \LogicException('Missing generated HLS pattern');
@@ -416,7 +416,7 @@ final class OutputTransactionTest
         $output = $this->directory . '/clip+1.m3u8';
         $transaction = new OutputTransaction($output, OutputLayout::hls(null));
         $argv = $transaction->rewriteArgv(['ffmpeg', $transaction->stagedOutputPath()]);
-        $index = array_search('-hls_segment_filename', $argv, true);
+        $index = array_search('-hls_segment_filename', $argv, strict: true);
 
         if (!is_int($index)) {
             throw new \LogicException('Missing generated HLS pattern');
@@ -451,7 +451,7 @@ final class OutputTransactionTest
         $output = $this->directory . '/playlist.m3u8';
         $transaction = new OutputTransaction($output, OutputLayout::hls(null));
         $argv = $transaction->rewriteArgv(['ffmpeg', $transaction->stagedOutputPath()]);
-        $index = array_search('-hls_segment_filename', $argv, true);
+        $index = array_search('-hls_segment_filename', $argv, strict: true);
 
         if (!is_int($index)) {
             throw new \LogicException('Missing generated HLS pattern');
