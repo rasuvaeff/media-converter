@@ -291,9 +291,7 @@ final class CommandSpec
 
         // A soft default: fills the slot without claiming an explicit
         // selection, so a graph label may still take the slot over.
-        if ($this->videoOutput === null) {
-            $this->videoOutput = $map;
-        }
+        $this->videoOutput ??= $map;
     }
 
     public function setDefaultAudioOutput(string $map): void
@@ -302,9 +300,7 @@ final class CommandSpec
             throw new \InvalidArgumentException('Audio output map cannot be empty');
         }
 
-        if ($this->audioOutput === null) {
-            $this->audioOutput = $map;
-        }
+        $this->audioOutput ??= $map;
     }
 
     /**

@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Rasuvaeff\MediaConverter;
 
-/** @api */
+/**
+ * @api
+ */
 final class ConversionCancelled extends \RuntimeException implements MediaConverterException
 {
     public function __construct()

@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Rasuvaeff\MediaConverter\Internal;
 
-/** @internal */
+/**
+ * @internal
+ */
 enum OutputMode
 {
     case Normal;

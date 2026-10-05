@@ -7,7 +7,7 @@ namespace Rasuvaeff\MediaConverter\Tests;
 use Rasuvaeff\Duration\Duration;
 use Rasuvaeff\MediaConverter\CachedProbesMedia;
 use Rasuvaeff\MediaConverter\MediaInfo;
-use Rasuvaeff\MediaConverter\Tests\Support\FakeProber;
+use Rasuvaeff\MediaConverter\Tests\Support\Doubles;
 use Rasuvaeff\MediaConverter\Tests\Support\FakeSimpleCache;
 use Testo\Assert;
 use Testo\Assert\ExpectException;
@@ -20,19 +20,19 @@ final class CachedProbesMediaTest
 {
     public function aCacheMissCallsTheInnerProberAndStoresWithTheDefaultTtl(): void
     {
-        $inner = new FakeProber($this->mediaInfo());
+        $inner = Doubles::prober($this->mediaInfo());
         $cache = new FakeSimpleCache();
 
         $probed = (new CachedProbesMedia($inner, $cache))->probe('http://example.test/video.mp4');
 
-        Assert::same($inner->sources, ['http://example.test/video.mp4']);
+        Assert::same(Doubles::probed($inner), ['http://example.test/video.mp4']);
         Assert::same(array_values($cache->storage), [$probed]);
         Assert::same(array_values($cache->ttls), [86_400]);
     }
 
     public function aCacheHitSkipsTheInnerProber(): void
     {
-        $inner = new FakeProber($this->mediaInfo());
+        $inner = Doubles::prober($this->mediaInfo());
         $cache = new FakeSimpleCache();
         $decorator = new CachedProbesMedia($inner, $cache);
 
@@ -40,13 +40,13 @@ final class CachedProbesMediaTest
         $second = $decorator->probe('http://example.test/video.mp4');
 
         Assert::same($second, $first);
-        Assert::same($inner->sources, ['http://example.test/video.mp4']);
+        Assert::same(Doubles::probed($inner), ['http://example.test/video.mp4']);
     }
 
     public function theKeyIsPrefixedAndFreeOfPsr16ReservedCharacters(): void
     {
         $cache = new FakeSimpleCache();
-        (new CachedProbesMedia(new FakeProber($this->mediaInfo()), $cache))->probe('http://example.test/a video.mp4');
+        (new CachedProbesMedia(Doubles::prober($this->mediaInfo()), $cache))->probe('http://example.test/a video.mp4');
 
         $key = $cache->requestedKeys[0];
         Assert::true(str_starts_with($key, 'rasuvaeff.media-converter.probe.'));
@@ -55,7 +55,7 @@ final class CachedProbesMediaTest
 
     public function aGarbageCacheValueIsTreatedAsAMiss(): void
     {
-        $inner = new FakeProber($this->mediaInfo());
+        $inner = Doubles::prober($this->mediaInfo());
         $cache = new FakeSimpleCache();
         $decorator = new CachedProbesMedia($inner, $cache);
 
@@ -63,7 +63,7 @@ final class CachedProbesMediaTest
         $cache->storage = array_map(static fn(): string => 'garbage', $cache->storage);
         $decorator->probe('http://example.test/video.mp4');
 
-        Assert::same(count($inner->sources), 2);
+        Assert::same(count(Doubles::probed($inner)), 2);
     }
 
     public function aChangedFileGetsANewCacheKey(): void
@@ -75,7 +75,7 @@ final class CachedProbesMediaTest
             file_put_contents($path, 'aa');
             clearstatcache();
             $cache = new FakeSimpleCache();
-            $decorator = new CachedProbesMedia(new FakeProber($this->mediaInfo()), $cache);
+            $decorator = new CachedProbesMedia(Doubles::prober($this->mediaInfo()), $cache);
 
             $decorator->probe($path);
             file_put_contents($path, 'aaa-grown');
@@ -98,7 +98,7 @@ final class CachedProbesMediaTest
             touch($path, 1_000_000_000);
             clearstatcache();
             $cache = new FakeSimpleCache();
-            $decorator = new CachedProbesMedia(new FakeProber($this->mediaInfo()), $cache);
+            $decorator = new CachedProbesMedia(Doubles::prober($this->mediaInfo()), $cache);
 
             $decorator->probe($path);
             touch($path, 1_000_000_100);
@@ -113,7 +113,7 @@ final class CachedProbesMediaTest
 
     public function anUnreadableSourceFallsBackToAStablePathOnlyKey(): void
     {
-        $inner = new FakeProber($this->mediaInfo());
+        $inner = Doubles::prober($this->mediaInfo());
         $cache = new FakeSimpleCache();
         $decorator = new CachedProbesMedia($inner, $cache);
 
@@ -121,13 +121,13 @@ final class CachedProbesMediaTest
         $decorator->probe('/no/such/file.mp4');
 
         Assert::same($cache->requestedKeys[0], $cache->requestedKeys[1]);
-        Assert::same($inner->sources, ['/no/such/file.mp4']);
+        Assert::same(Doubles::probed($inner), ['/no/such/file.mp4']);
     }
 
     public function aNullTtlIsForwardedToTheBackend(): void
     {
         $cache = new FakeSimpleCache();
-        (new CachedProbesMedia(new FakeProber($this->mediaInfo()), $cache, ttlSeconds: null))->probe('src.mp4');
+        (new CachedProbesMedia(Doubles::prober($this->mediaInfo()), $cache, ttlSeconds: null))->probe('src.mp4');
 
         Assert::same(array_values($cache->ttls), [null]);
     }
@@ -135,7 +135,7 @@ final class CachedProbesMediaTest
     public function aCustomTtlIsForwardedToTheBackend(): void
     {
         $cache = new FakeSimpleCache();
-        (new CachedProbesMedia(new FakeProber($this->mediaInfo()), $cache, ttlSeconds: 60))->probe('src.mp4');
+        (new CachedProbesMedia(Doubles::prober($this->mediaInfo()), $cache, ttlSeconds: 60))->probe('src.mp4');
 
         Assert::same(array_values($cache->ttls), [60]);
     }
@@ -143,13 +143,13 @@ final class CachedProbesMediaTest
     #[ExpectException(\InvalidArgumentException::class)]
     public function rejectsAZeroTtl(): void
     {
-        new CachedProbesMedia(new FakeProber($this->mediaInfo()), new FakeSimpleCache(), ttlSeconds: 0);
+        new CachedProbesMedia(Doubles::prober($this->mediaInfo()), new FakeSimpleCache(), ttlSeconds: 0);
     }
 
     #[ExpectException(\InvalidArgumentException::class)]
     public function rejectsANegativeTtl(): void
     {
-        new CachedProbesMedia(new FakeProber($this->mediaInfo()), new FakeSimpleCache(), ttlSeconds: -1);
+        new CachedProbesMedia(Doubles::prober($this->mediaInfo()), new FakeSimpleCache(), ttlSeconds: -1);
     }
 
     private function mediaInfo(): MediaInfo

@@ -25,16 +25,16 @@ use Rasuvaeff\MediaConverter\Pipeline;
 use Rasuvaeff\MediaConverter\ProcessOutcome;
 use Rasuvaeff\MediaConverter\Progress\ConversionPhase;
 use Rasuvaeff\MediaConverter\Progress\ProgressEvent;
-use Rasuvaeff\MediaConverter\Tests\Support\FakeProber;
-use Rasuvaeff\MediaConverter\Tests\Support\FakeRunner;
-use Rasuvaeff\MediaConverter\Tests\Support\FullBulkhead;
-use Rasuvaeff\MediaConverter\Tests\Support\RecordingBulkhead;
+use Rasuvaeff\MediaConverter\Tests\Support\Doubles;
 use Rasuvaeff\Retry\Retry;
+use Rasuvaeff\Understudy\Arg;
 use Testo\Assert;
 use Testo\Codecov\Covers;
 use Testo\Lifecycle\AfterTest;
 use Testo\Lifecycle\BeforeTest;
 use Testo\Test;
+
+use function Rasuvaeff\Understudy\verify;
 
 #[Test]
 #[Covers(MediaConverter::class)]
@@ -66,7 +66,7 @@ final class MediaConverterTest
 
     public function runsTheBuiltArgvAndReturnsAResult(): void
     {
-        $runner = new FakeRunner([new ProcessOutcome(0, '')], outputContent: 'ABCDE');
+        $runner = Doubles::runner([new ProcessOutcome(0, '')], outputContent: 'ABCDE');
         $converter = new MediaConverter(FfmpegBinary::default(), $runner);
 
         $result = $converter->run(
@@ -74,11 +74,12 @@ final class MediaConverterTest
             $this->output,
         );
 
-        Assert::same(array_slice($runner->calls[0], 0, -1), [
+        $argv = Doubles::argv($runner, 0);
+        Assert::same(array_slice($argv, 0, -1), [
             '/usr/bin/ffmpeg', '-hide_banner', '-nostdin', '-y',
             '-i', 'input.mkv', '-c:v', 'libx264',
         ]);
-        Assert::true(str_contains($runner->calls[0][array_key_last($runner->calls[0])], '/.media-converter-'));
+        Assert::true(str_contains($argv[array_key_last($argv)], '/.media-converter-'));
         Assert::same($result->outputPath(), $this->output);
         Assert::same($result->outputBytes(), 5);
         // A nonexistent source contributes zero input bytes, and elapsed time
@@ -86,12 +87,12 @@ final class MediaConverterTest
         // (not, say, the sum of two Unix timestamps).
         Assert::same($result->inputBytes(), 0);
         Assert::true($result->elapsed()->toSeconds() >= 0.0 && $result->elapsed()->toSeconds() < 5.0);
-        Assert::same($result->command(), $runner->calls[0]);
+        Assert::same($result->command(), Doubles::argv($runner, 0));
     }
 
     public function preCancelledRunNeverStartsAProcess(): void
     {
-        $runner = new FakeRunner([]);
+        $runner = Doubles::runner([]);
         $token = new CancellationToken();
         $token->cancel();
         $caught = null;
@@ -103,7 +104,7 @@ final class MediaConverterTest
         }
 
         Assert::notNull($caught);
-        Assert::same($runner->callCount(), 0);
+        Assert::same(count(Doubles::runs($runner)), 0);
     }
 
     public function preCancelledRunEmitsNoProgressEvents(): void
@@ -111,7 +112,7 @@ final class MediaConverterTest
         // The pre-flight cancellation check fires BEFORE any phase is
         // emitted: a token cancelled up-front must not leak even a Running
         // phase event before the ConversionCancelled propagates.
-        $runner = new FakeRunner([]);
+        $runner = Doubles::runner([]);
         $token = new CancellationToken();
         $token->cancel();
         $phases = [];
@@ -131,14 +132,14 @@ final class MediaConverterTest
 
         Assert::notNull($caught);
         Assert::same($phases, []);
-        Assert::same($runner->callCount(), 0);
+        Assert::same(count(Doubles::runs($runner)), 0);
     }
 
     public function cancellationDuringProbeEmitsOnlyTheProbingPhase(): void
     {
         // A token cancelled DURING the probe must abort right after
         // probeSources() — before the Running phase is ever emitted.
-        $runner = new FakeRunner([]);
+        $runner = Doubles::runner([]);
         $token = new CancellationToken();
         $prober = new readonly class ($token) implements \Rasuvaeff\MediaConverter\ProbesMedia {
             public function __construct(
@@ -170,13 +171,13 @@ final class MediaConverterTest
 
         Assert::notNull($caught);
         Assert::same($phases, [ConversionPhase::Probing]);
-        Assert::same($runner->callCount(), 0);
+        Assert::same(count(Doubles::runs($runner)), 0);
     }
 
     public function progressReportsLifecyclePhases(): void
     {
-        $runner = new FakeRunner([new ProcessOutcome(0, '')]);
-        $prober = new FakeProber(new MediaInfo(Duration::seconds(1), 80, 60, 'h264', 'aac', null));
+        $runner = Doubles::runner([new ProcessOutcome(0, '')]);
+        $prober = Doubles::prober(new MediaInfo(Duration::seconds(1), 80, 60, 'h264', 'aac', null));
         $phases = [];
 
         (new MediaConverter(FfmpegBinary::default(), $runner, prober: $prober))->run(
@@ -197,8 +198,8 @@ final class MediaConverterTest
 
     public function cancellationDuringProbingPhaseDoesNotProbeOrRun(): void
     {
-        $runner = new FakeRunner([]);
-        $prober = new FakeProber(new MediaInfo(Duration::seconds(1), null, null, null, null, null));
+        $runner = Doubles::runner([]);
+        $prober = Doubles::prober(new MediaInfo(Duration::seconds(1), null, null, null, null, null));
         $token = new CancellationToken();
         $caught = null;
 
@@ -218,13 +219,13 @@ final class MediaConverterTest
         }
 
         Assert::notNull($caught);
-        Assert::same($prober->sources, []);
-        Assert::same($runner->callCount(), 0);
+        Assert::same(Doubles::probed($prober), []);
+        Assert::same(count(Doubles::runs($runner)), 0);
     }
 
     public function cancellationAfterProbeDoesNotRun(): void
     {
-        $runner = new FakeRunner([]);
+        $runner = Doubles::runner([]);
         $token = new CancellationToken();
         $prober = new readonly class ($token) implements \Rasuvaeff\MediaConverter\ProbesMedia {
             public function __construct(
@@ -248,12 +249,12 @@ final class MediaConverterTest
         }
 
         Assert::notNull($caught);
-        Assert::same($runner->callCount(), 0);
+        Assert::same(count(Doubles::runs($runner)), 0);
     }
 
     public function cancellationDuringRunningPhaseDoesNotStartRunner(): void
     {
-        $runner = new FakeRunner([]);
+        $runner = Doubles::runner([]);
         $token = new CancellationToken();
         $caught = null;
 
@@ -273,13 +274,13 @@ final class MediaConverterTest
         }
 
         Assert::notNull($caught);
-        Assert::same($runner->callCount(), 0);
+        Assert::same(count(Doubles::runs($runner)), 0);
     }
 
     public function cancellationDuringCommittingPhaseRollsBackOutput(): void
     {
         file_put_contents($this->output, 'original');
-        $runner = new FakeRunner([new ProcessOutcome(0, '')], outputContent: 'replacement');
+        $runner = Doubles::runner([new ProcessOutcome(0, '')], outputContent: 'replacement');
         $token = new CancellationToken();
         $caught = null;
 
@@ -299,16 +300,16 @@ final class MediaConverterTest
         }
 
         Assert::notNull($caught);
-        Assert::same($runner->callCount(), 1);
+        Assert::same(count(Doubles::runs($runner)), 1);
         Assert::same(file_get_contents($this->output), 'original');
     }
 
     public function completedProgressHasOneFractionAndDuration(): void
     {
         $events = [];
-        $prober = new FakeProber(new MediaInfo(Duration::seconds(3), null, null, null, null, null));
+        $prober = Doubles::prober(new MediaInfo(Duration::seconds(3), null, null, null, null, null));
 
-        (new MediaConverter(FfmpegBinary::default(), new FakeRunner([new ProcessOutcome(0, '')]), prober: $prober))->run(
+        (new MediaConverter(FfmpegBinary::default(), Doubles::runner([new ProcessOutcome(0, '')]), prober: $prober))->run(
             Pipeline::from('in.mp4'),
             $this->output,
             static function (ProgressEvent $event) use (&$events): void {
@@ -328,7 +329,7 @@ final class MediaConverterTest
         // unknown — even the terminal event stays indeterminate.
         $events = [];
 
-        (new MediaConverter(FfmpegBinary::default(), new FakeRunner([new ProcessOutcome(0, '')])))->run(
+        (new MediaConverter(FfmpegBinary::default(), Doubles::runner([new ProcessOutcome(0, '')])))->run(
             Pipeline::from('in.mp4'),
             $this->output,
             static function (ProgressEvent $event) use (&$events): void {
@@ -345,7 +346,7 @@ final class MediaConverterTest
     {
         // The output guard throws ONLY when the token is actually cancelled —
         // a live token on the happy path must let every chunk through.
-        $runner = new FakeRunner(
+        $runner = Doubles::runner(
             [new ProcessOutcome(0, '')],
             emit: [['out', "out_time_us=1000000\nprogress=continue\n"]],
         );
@@ -367,7 +368,7 @@ final class MediaConverterTest
 
     public function usesTheInjectedTimeoutsInsteadOfTheDefaults(): void
     {
-        $runner = new FakeRunner([new ProcessOutcome(0, '')]);
+        $runner = Doubles::runner([new ProcessOutcome(0, '')]);
         $converter = new MediaConverter(
             FfmpegBinary::default(),
             $runner,
@@ -377,13 +378,13 @@ final class MediaConverterTest
 
         $converter->run(Pipeline::from('in.mp4'), $this->output);
 
-        Assert::same($runner->timeouts[0][0]->toSeconds(), 7.0);
-        Assert::same($runner->timeouts[0][1]->toSeconds(), 3.0);
+        Assert::same(Doubles::runs($runner)[0]->arg('timeout')->toSeconds(), 7.0);
+        Assert::same(Doubles::runs($runner)[0]->arg('idleTimeout')->toSeconds(), 3.0);
     }
 
     public function timeoutMapsToTheTimeoutReason(): void
     {
-        $converter = new MediaConverter(FfmpegBinary::default(), new FakeRunner([new ProcessOutcome(124, 'killed', timedOut: true)]));
+        $converter = new MediaConverter(FfmpegBinary::default(), Doubles::runner([new ProcessOutcome(124, 'killed', timedOut: true)]));
         $caught = null;
 
         try {
@@ -400,7 +401,7 @@ final class MediaConverterTest
         file_put_contents($this->output, 'original');
         $converter = new MediaConverter(
             FfmpegBinary::default(),
-            new FakeRunner([new ProcessOutcome(1, 'muxer error')], writeOnFailure: true, sidecars: ['partial.ts' => 'partial']),
+            Doubles::runner([new ProcessOutcome(1, 'muxer error')], writeOnFailure: true, sidecars: ['partial.ts' => 'partial']),
         );
         $caught = null;
 
@@ -418,7 +419,7 @@ final class MediaConverterTest
     public function sourceMayEqualOutputBecauseFfmpegWritesToStaging(): void
     {
         file_put_contents($this->output, 'original-input');
-        $runner = new FakeRunner([new ProcessOutcome(0, '')], outputContent: 'converted');
+        $runner = Doubles::runner([new ProcessOutcome(0, '')], outputContent: 'converted');
         $converter = new MediaConverter(FfmpegBinary::default(), $runner);
 
         $result = $converter->run(Pipeline::from($this->output), $this->output);
@@ -429,7 +430,7 @@ final class MediaConverterTest
 
     public function missingInputStderrMapsToNoInput(): void
     {
-        $converter = new MediaConverter(FfmpegBinary::default(), new FakeRunner([new ProcessOutcome(1, "in.mp4: No such file or directory")]));
+        $converter = new MediaConverter(FfmpegBinary::default(), Doubles::runner([new ProcessOutcome(1, "in.mp4: No such file or directory")]));
         $caught = null;
 
         try {
@@ -443,7 +444,7 @@ final class MediaConverterTest
 
     public function noInputDetectionIsCaseInsensitive(): void
     {
-        $converter = new MediaConverter(FfmpegBinary::default(), new FakeRunner([new ProcessOutcome(1, 'in.mp4: no such file or directory')]));
+        $converter = new MediaConverter(FfmpegBinary::default(), Doubles::runner([new ProcessOutcome(1, 'in.mp4: no such file or directory')]));
         $caught = null;
 
         try {
@@ -457,7 +458,7 @@ final class MediaConverterTest
 
     public function exitCode127MapsToFfmpegNotExecutable(): void
     {
-        $converter = new MediaConverter(FfmpegBinary::default(), new FakeRunner([new ProcessOutcome(127, 'not found')]));
+        $converter = new MediaConverter(FfmpegBinary::default(), Doubles::runner([new ProcessOutcome(127, 'not found')]));
         $caught = null;
 
         try {
@@ -471,7 +472,7 @@ final class MediaConverterTest
 
     public function incompatiblePipelinePropagatesBeforeAnyProcess(): void
     {
-        $runner = new FakeRunner([]);
+        $runner = Doubles::runner([]);
         $converter = new MediaConverter(FfmpegBinary::default(), $runner);
         $caught = null;
 
@@ -485,12 +486,12 @@ final class MediaConverterTest
 
         Assert::notNull($caught);
         Assert::same($caught->reason, ConversionFailureReason::IncompatibleOperations);
-        Assert::same($runner->callCount(), 0);
+        Assert::same(count(Doubles::runs($runner)), 0);
     }
 
     public function retryRepeatsTransientFailuresThenSucceeds(): void
     {
-        $runner = new FakeRunner([
+        $runner = Doubles::runner([
             new ProcessOutcome(1, 'HTTP 503 Service Unavailable'),
             new ProcessOutcome(1, 'Connection reset by peer'),
             new ProcessOutcome(0, ''),
@@ -503,13 +504,13 @@ final class MediaConverterTest
 
         $result = $converter->run(Pipeline::from('https://cdn/x.m3u8')->add(new Remux()), $this->output);
 
-        Assert::same($runner->callCount(), 3);
+        Assert::same(count(Doubles::runs($runner)), 3);
         Assert::same($result->outputPath(), $this->output);
     }
 
     public function retryDoesNotRepeatADeterministicFailure(): void
     {
-        $runner = new FakeRunner([new ProcessOutcome(1, 'Invalid argument')]);
+        $runner = Doubles::runner([new ProcessOutcome(1, 'Invalid argument')]);
         $converter = new MediaConverter(
             FfmpegBinary::default(),
             $runner,
@@ -523,12 +524,12 @@ final class MediaConverterTest
         }
 
         Assert::notNull($caught);
-        Assert::same($runner->callCount(), 1);
+        Assert::same(count(Doubles::runs($runner)), 1);
     }
 
     public function exhaustedRetryStillThrowsConversionFailed(): void
     {
-        $runner = new FakeRunner([
+        $runner = Doubles::runner([
             new ProcessOutcome(1, 'HTTP 503 Service Unavailable'),
             new ProcessOutcome(1, 'HTTP 503 Service Unavailable'),
         ]);
@@ -547,22 +548,22 @@ final class MediaConverterTest
         Assert::notNull($caught);
         Assert::same($caught->reason, ConversionFailureReason::NonZeroExit);
         Assert::instanceOf($caught->getPrevious(), \Rasuvaeff\Retry\RetryExhausted::class);
-        Assert::same($runner->callCount(), 2);
+        Assert::same(count(Doubles::runs($runner)), 2);
     }
 
     public function bulkheadGuardsEveryRun(): void
     {
-        $bulkhead = new RecordingBulkhead();
-        $converter = new MediaConverter(FfmpegBinary::default(), new FakeRunner([new ProcessOutcome(0, '')]), bulkhead: $bulkhead);
+        $bulkhead = Doubles::bulkhead();
+        $converter = new MediaConverter(FfmpegBinary::default(), Doubles::runner([new ProcessOutcome(0, '')]), bulkhead: $bulkhead);
 
         $converter->run(Pipeline::from('in.mp4'), $this->output);
 
-        Assert::same($bulkhead->calls, 1);
+        verify(fn() => $bulkhead->call(Arg::any()), times: 1);
     }
 
     public function bulkheadFullPropagatesAsItself(): void
     {
-        $converter = new MediaConverter(FfmpegBinary::default(), new FakeRunner([]), bulkhead: new FullBulkhead());
+        $converter = new MediaConverter(FfmpegBinary::default(), Doubles::runner([]), bulkhead: Doubles::fullBulkhead());
         $caught = null;
 
         try {
@@ -575,8 +576,8 @@ final class MediaConverterTest
 
     public function drmEncryptedSourceIsRefusedBeforeAnyProcess(): void
     {
-        $runner = new FakeRunner([]);
-        $prober = new FakeProber(new MediaInfo(Duration::seconds(10), 1920, 1080, 'h264', 'aac', null, encrypted: true));
+        $runner = Doubles::runner([]);
+        $prober = Doubles::prober(new MediaInfo(Duration::seconds(10), 1920, 1080, 'h264', 'aac', null, encrypted: true));
         $converter = new MediaConverter(FfmpegBinary::default(), $runner, prober: $prober);
         $caught = null;
 
@@ -588,13 +589,13 @@ final class MediaConverterTest
         Assert::notNull($caught);
         Assert::same($caught->reason, ConversionFailureReason::Drm);
         Assert::same($caught->exitCode, 0);
-        Assert::same($runner->callCount(), 0);
+        Assert::same(count(Doubles::runs($runner)), 0);
     }
 
     public function nonEncryptedSourceRunsNormallyWithAProber(): void
     {
-        $runner = new FakeRunner([new ProcessOutcome(0, '')]);
-        $prober = new FakeProber(new MediaInfo(Duration::seconds(10), 1920, 1080, 'h264', 'aac', null));
+        $runner = Doubles::runner([new ProcessOutcome(0, '')]);
+        $prober = Doubles::prober(new MediaInfo(Duration::seconds(10), 1920, 1080, 'h264', 'aac', null));
         $converter = new MediaConverter(FfmpegBinary::default(), $runner, prober: $prober);
 
         $result = $converter->run(Pipeline::from('in.mp4'), $this->output);
@@ -604,11 +605,11 @@ final class MediaConverterTest
 
     public function concatProbesEverySegmentAndSumsTheirDurations(): void
     {
-        $runner = new FakeRunner(
+        $runner = Doubles::runner(
             [new ProcessOutcome(0, '')],
             emit: [['out', "out_time_us=15000000\nprogress=continue\n"]],
         );
-        $prober = new FakeProber([
+        $prober = Doubles::prober([
             new MediaInfo(Duration::seconds(10), 1920, 1080, 'h264', 'aac', null),
             new MediaInfo(Duration::seconds(20), 1920, 1080, 'h264', 'aac', null),
         ]);
@@ -623,18 +624,18 @@ final class MediaConverterTest
             },
         );
 
-        Assert::same($prober->sources, ['first.mp4', 'second.mp4']);
+        Assert::same(Doubles::probed($prober), ['first.mp4', 'second.mp4']);
         $sample = array_values(array_filter($events, static fn(ProgressEvent $event): bool => $event->outTime()->toMicros() > 0))[0];
         Assert::same($sample->fraction(), 0.5);
     }
 
     public function unknownConcatSegmentDurationKeepsProgressIndeterminate(): void
     {
-        $runner = new FakeRunner(
+        $runner = Doubles::runner(
             [new ProcessOutcome(0, '')],
             emit: [['out', "out_time_us=5000000\nprogress=continue\n"]],
         );
-        $prober = new FakeProber([
+        $prober = Doubles::prober([
             new MediaInfo(Duration::seconds(10), 1920, 1080, 'h264', 'aac', null),
             new MediaInfo(Duration::zero(), 1920, 1080, 'h264', 'aac', null),
         ]);
@@ -655,11 +656,11 @@ final class MediaConverterTest
 
     public function trimUsesItsOutputDurationForProgress(): void
     {
-        $runner = new FakeRunner(
+        $runner = Doubles::runner(
             [new ProcessOutcome(0, '')],
             emit: [['out', "out_time_us=5000000\nprogress=end\n"]],
         );
-        $prober = new FakeProber(new MediaInfo(Duration::seconds(10), 1920, 1080, 'h264', 'aac', null));
+        $prober = Doubles::prober(new MediaInfo(Duration::seconds(10), 1920, 1080, 'h264', 'aac', null));
         $converter = new MediaConverter(FfmpegBinary::default(), $runner, prober: $prober);
         $events = [];
 
@@ -677,11 +678,11 @@ final class MediaConverterTest
 
     public function thumbnailProgressIsIndeterminate(): void
     {
-        $runner = new FakeRunner(
+        $runner = Doubles::runner(
             [new ProcessOutcome(0, '')],
             emit: [['out', "out_time_us=1000000\nprogress=end\n"]],
         );
-        $prober = new FakeProber(new MediaInfo(Duration::seconds(10), 1920, 1080, 'h264', 'aac', null));
+        $prober = Doubles::prober(new MediaInfo(Duration::seconds(10), 1920, 1080, 'h264', 'aac', null));
         $converter = new MediaConverter(FfmpegBinary::default(), $runner, prober: $prober);
         $events = [];
 
@@ -703,15 +704,15 @@ final class MediaConverterTest
         $audio = $this->output . '.audio';
         file_put_contents($video, 'video');
         file_put_contents($audio, 'audio-data');
-        $prober = new FakeProber([
+        $prober = Doubles::prober([
             new MediaInfo(Duration::seconds(10), 1920, 1080, 'h264', 'aac', null),
             new MediaInfo(Duration::seconds(4), null, null, null, 'aac', null),
         ]);
-        $converter = new MediaConverter(FfmpegBinary::default(), new FakeRunner([new ProcessOutcome(0, '')]), prober: $prober);
+        $converter = new MediaConverter(FfmpegBinary::default(), Doubles::runner([new ProcessOutcome(0, '')]), prober: $prober);
 
         $result = $converter->run(Pipeline::from($video)->add(new ReplaceAudio($audio)), $this->output);
 
-        Assert::same($prober->sources, [$video, $audio]);
+        Assert::same(Doubles::probed($prober), [$video, $audio]);
         Assert::same($result->inputBytes(), 15);
         @unlink($video);
         @unlink($audio);
@@ -721,7 +722,7 @@ final class MediaConverterTest
     {
         $sidecar = pathinfo($this->output, PATHINFO_FILENAME) . '0.ts';
         $sidecarPath = dirname($this->output) . '/' . $sidecar;
-        $runner = new FakeRunner(
+        $runner = Doubles::runner(
             [new ProcessOutcome(0, '')],
             outputContent: 'manifest',
             sidecars: [$sidecar => 'segment-data'],
@@ -737,11 +738,11 @@ final class MediaConverterTest
 
     public function progressCallbackReceivesADeterminateFractionWhenTheProberKnowsTheDuration(): void
     {
-        $runner = new FakeRunner(
+        $runner = Doubles::runner(
             [new ProcessOutcome(0, '')],
             emit: [['out', "frame=100\nfps=25\nout_time_us=5000000\nspeed=1.0x\nprogress=continue\n"]],
         );
-        $prober = new FakeProber(new MediaInfo(Duration::seconds(10), 1920, 1080, 'h264', 'aac', null));
+        $prober = Doubles::prober(new MediaInfo(Duration::seconds(10), 1920, 1080, 'h264', 'aac', null));
         $converter = new MediaConverter(FfmpegBinary::default(), $runner, prober: $prober);
 
         $events = [];
@@ -759,7 +760,7 @@ final class MediaConverterTest
 
     public function progressWithoutAProberYieldsIndeterminateSamples(): void
     {
-        $runner = new FakeRunner(
+        $runner = Doubles::runner(
             [new ProcessOutcome(0, '')],
             emit: [['out', "out_time_us=1000000\nprogress=continue\n"]],
         );
@@ -777,17 +778,17 @@ final class MediaConverterTest
 
     public function progressReportingFlagsAreAddedOnlyWhenOnProgressIsGiven(): void
     {
-        $runner = new FakeRunner([new ProcessOutcome(0, ''), new ProcessOutcome(0, '')]);
+        $runner = Doubles::runner([new ProcessOutcome(0, ''), new ProcessOutcome(0, '')]);
         $converter = new MediaConverter(FfmpegBinary::default(), $runner);
 
         $converter->run(Pipeline::from('in.mp4'), $this->output);
-        Assert::false(in_array('-progress', $runner->calls[0], strict: true));
+        Assert::false(in_array('-progress', Doubles::argv($runner, 0), strict: true));
 
         $converter->run(Pipeline::from('in.mp4'), $this->output, onProgress: static function (): void {});
         // Exact position: spliced right after argv[0] (the ffmpeg path), never
         // replacing or displacing the pipeline's own leading global options.
         Assert::same(
-            array_slice($runner->calls[1], 0, 5),
+            array_slice(Doubles::argv($runner, 1), 0, 5),
             ['/usr/bin/ffmpeg', '-progress', 'pipe:1', '-nostats', '-hide_banner'],
         );
     }
