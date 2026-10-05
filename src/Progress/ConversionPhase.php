@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Rasuvaeff\MediaConverter\Progress;
 
-/** @api */
+/**
+ * @api
+ */
 enum ConversionPhase: string
 {
     case Probing = 'probing';
