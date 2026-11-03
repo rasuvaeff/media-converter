@@ -43,8 +43,10 @@ final readonly class AddArtwork implements OperationInterface
      * MP3-specific `-id3v2_version 3`; pass false for M4A/FLAC — their muxers
      * reject the option.
      */
-    public static function forAudio(string $image, bool $id3v2 = true): self
-    {
+    public static function forAudio(
+        string $image,
+        bool $id3v2 = true,
+    ): self {
         return new self($image, audioOnly: true, id3v2: $id3v2);
     }
 

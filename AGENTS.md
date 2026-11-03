@@ -386,8 +386,10 @@ false negative.
   repo-wide rector/psalm conflict — keep the annotations, skip that specific
   rector hunk (never run bare `rector:fix`).
 - **Accepted equivalent mutants (`FfprobeMediaInfo`/`ProgressReportParser`/
-  `MediaConverter`/`ConversionResult`/`SymfonyProcessRunner`).** These infection mutants are covered but deliberately
-  left unkilled — do not chase them with more tests:
+  `MediaConverter`/`ConversionResult`/`SymfonyProcessRunner`).** These infection mutants (Escaped or Not Covered under
+  `--with-uncovered`) are deliberately left unkilled — do not chase them with
+  more tests. Measured with `zend.assertions=-1` as in CI: 1505 mutants, 52
+  Ignored, 42 undetected, overall MSI 97% against `minMsi` 95:
   - `FfprobeMediaInfo::probe()` — swapping `$stdout . $outcome->stderrTail`
     to `$outcome->stderrTail . $stdout` in the `/decrypt/i` check (`Concat`).
     The `encrypted:` check only runs after `json_decode($stdout, ...)`
@@ -423,29 +425,42 @@ false negative.
     bare `$this->outputBytes` (`CastFloat`). Same reasoning as
     `floatField()` above: the declared `float` return type silently widens
     an `int` under `strict_types=1` regardless of the explicit cast.
-  - `OutputTransaction` (18 mutants, grouped) — (a) the whole
-    `readPreviousArtifacts()` inventory-read path (`return []` fall-throughs,
-    reduce/filter unwraps, dropping `$oldArtifacts` from the sweep
-    candidates): the directory glob in `removeObsoleteArtifacts()` is a
-    strict superset of the inventory on every reachable filesystem state, so
-    inventory-read mutants change nothing observable — the inventory's real
-    consumer is future orphan-cleanup semantics, kept by design; (b)
-    identity rewrites (`array_values` on an already-list argv / on a
-    filter that only ever drops the LAST key; `array_unique`/spread over
-    idempotent unlinks; `array_splice(…, -1, -1)` ≡ length 0); (c)
-    root/permission-dependent paths (`/inventory.json` temp file, backup
-    path variants used consistently for copy+restore, `mkdir` mode 447/449
-    vs 0o700) — tests run as root in the `composer:2` container where these
-    are indistinguishable; (d) `rtrim(dirname($pattern), '/')` differs only
-    for a segment pattern at the filesystem root — not portably testable.
-  - `CachedProbesMedia::cacheKey()` — the two `FalseValue` mutants flipping
-    the `is_file(...) ? ... : false` sentinels to `true` (missing-file
-    branch). The sentinel only feeds the `=== false ? '-' : ...` formatting,
-    so for a missing file the fingerprint is a constant either way ('-' vs
-    '1') and the key stays stable-per-path — no observable difference exists;
-    any constant sentinel is equivalent. The MEANINGFUL mutants (ternary
-    swaps that freeze size/mtime for existing files) ARE killed, by the
-    changed-size and touched-mtime tests.
+  - `OutputTransaction` (16 mutants, grouped; `composer mutation` runs with
+    `--with-uncovered`) — (a) the whole `readPreviousArtifacts()` inventory-read
+    path (`return []` fall-throughs, the reduce/`ArrayOneItem` mutants, dropping
+    `$oldArtifacts` from the sweep candidates): the directory glob in
+    `removeObsoleteArtifacts()` is a strict superset of the inventory on every
+    reachable filesystem state (a hidden stem cannot exist: the staged output
+    is found by the same glob), so only the type-level mutants are killed (a
+    non-array inventory, a non-string entry, an entry in another directory);
+    (b) identity rewrites (`array_values` on a filter that only ever drops the
+    LAST key; `array_unique`/`array_values` over a list of idempotent unlinks;
+    `array_splice(…, -1, -1)` ≡ length 0; the `(bool)` around `preg_match` in a
+    `||` chain); (c) root/permission-dependent paths — `/inventory.json` as
+    the inventory temp file succeeds as root (in CI, a non-root user cannot
+    write `/`, and the commit test fails), and the throws for a failed
+    `mkdir` of the staging/backup directory, a failed `copy` of a backup, an
+    unreadable or unwritable staged playlist (root ignores file modes; the
+    staging directory name is random) and the unreachable "artifact list cannot
+    be empty" guard (the staged output is always committed).
+  - Negative-duration guards (`Thumbnail`, `Trim`, `AnimatedPreview`:
+    `$duration->toMicros() < 0`) are unreachable: `Duration` already rejects a
+    negative value, so the `throw` never runs and its mutant is Not Covered.
+  - `MediaConverter` — `$this->prober?->probe()` (`NullSafeMethodCall`) and
+    the `'Configured media prober returned no media info'` throw: `probeSources()`
+    runs only when a prober is configured. The `transaction->rollback()` /
+    `throw $failure` pair around `rewriteArgv()` and the `throw $exhausted`
+    after `RetryExhausted` need a `rewriteArgv()` failure or a non-
+    `ConversionFailed` last exception that the pipeline cannot produce.
+  - `FfprobeMediaInfo` — the `disposition` guard (`LogicalOr`, `ReturnRemoval`,
+    `?? 0` → `?? -1`): every path that skips the guard still ends in `=== 1` on
+    a missing value; `firstStreamOfType()`'s `return null` for a non-list
+    `streams` (a `foreach` over a string only warns, and tests do not fail on
+    warnings); `floatField()`'s `isset && is_string` → `||` (the result is the
+    same; only an undefined-key warning differs).
+  - `CachedProbesMedia::cacheKey()` — the two `FalseValue` mutants are killed by
+    `theKeyOfANonLocalSourceHashesDashesForSizeAndMtime` (the key is the hash
+    of `source|-|-`), not equivalent as an earlier version of this note said.
   - `SymfonyProcessRunner::run()`'s `catch (ProcessTimedOutException)`
     branch — `$process->getExitCode() ?? self::TIMEOUT_EXIT_CODE` → the
     operands swapped (`Coalesce`). Since `TIMEOUT_EXIT_CODE` (`124`) is a

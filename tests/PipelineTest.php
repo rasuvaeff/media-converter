@@ -351,6 +351,51 @@ final class PipelineTest
         Assert::notNull($caught);
         Assert::same($caught->reason, ConversionFailureReason::IncompatibleOperations);
         Assert::string($caught->stderrTail())->contains('AFTER a video Transcode');
+        Assert::same($caught->exitCode, 0);
+    }
+
+    public function onlyTheCoverStreamsCopyCountsWhenCheckingTheArtworkOrder(): void
+    {
+        // A later per-stream codec that is not a copy, and a copy of another
+        // stream kind, must not be mistaken for the cover's `-c:v:N copy`.
+        $extra = new class implements OperationInterface {
+            #[\Override]
+            public function applyTo(CommandSpec $spec): void
+            {
+                $spec->addOutputOption('-c:v:3', 'libx264', '-c:a', 'copy');
+            }
+        };
+        $caught = null;
+
+        try {
+            Pipeline::from('in.mp4')
+                ->add(AddArtwork::forVideo('cover.jpg'))
+                ->add(new Transcode(videoCodec: 'libx264', audioCodec: 'aac'))
+                ->add($extra)
+                ->toArgv($this->binary, 'out.mp4');
+        } catch (ConversionFailed $caught) {
+        }
+
+        Assert::notNull($caught);
+        Assert::same($caught->reason, ConversionFailureReason::IncompatibleOperations);
+    }
+
+    public function withoutArtworkTheCodecOrderIsNotChecked(): void
+    {
+        $copyFirst = new class implements OperationInterface {
+            #[\Override]
+            public function applyTo(CommandSpec $spec): void
+            {
+                $spec->addOutputOption('-c:v:1', 'copy');
+            }
+        };
+
+        $argv = Pipeline::from('in.mp4')
+            ->add($copyFirst)
+            ->add(new Transcode(videoCodec: 'libx264', audioCodec: 'aac'))
+            ->toArgv($this->binary, 'out.mp4');
+
+        Assert::true(in_array('-c:v:1', $argv, strict: true));
     }
 
     public function fastSeekTrimEmitsTheSeekBeforeTheInput(): void

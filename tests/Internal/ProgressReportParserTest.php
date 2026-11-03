@@ -188,4 +188,13 @@ final class ProgressReportParserTest
 
         Assert::null($samples[0]->frame);
     }
+
+    public function blankLinesBetweenFieldsAreSkipped(): void
+    {
+        $samples = (new ProgressReportParser())->feed("\nframe=3\n\nout_time_us=1000000\nprogress=continue\n");
+
+        Assert::same(count($samples), 1);
+        Assert::same($samples[0]->frame, 3);
+        Assert::same($samples[0]->outTime->toMicros(), 1_000_000);
+    }
 }

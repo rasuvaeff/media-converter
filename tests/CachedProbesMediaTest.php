@@ -53,6 +53,17 @@ final class CachedProbesMediaTest
         Assert::same(preg_match('#[{}()/\\\\@:]#', $key), 0);
     }
 
+    public function theKeyOfANonLocalSourceHashesDashesForSizeAndMtime(): void
+    {
+        $cache = new FakeSimpleCache();
+        (new CachedProbesMedia(Doubles::prober($this->mediaInfo()), $cache))->probe('http://example.test/video.mp4');
+
+        Assert::same(
+            $cache->requestedKeys[0],
+            'rasuvaeff.media-converter.probe.' . hash('xxh3', 'http://example.test/video.mp4|-|-'),
+        );
+    }
+
     public function aGarbageCacheValueIsTreatedAsAMiss(): void
     {
         $inner = Doubles::prober($this->mediaInfo());

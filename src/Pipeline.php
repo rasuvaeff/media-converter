@@ -74,8 +74,10 @@ final readonly class Pipeline
      *
      * @param list<string> $segments 2 or more segment paths/URLs, in order
      */
-    public static function concat(array $segments, bool $hasAudio = true): self
-    {
+    public static function concat(
+        array $segments,
+        bool $hasAudio = true,
+    ): self {
         if (count($segments) < 2) {
             throw new \InvalidArgumentException('Concat needs at least two segments');
         }

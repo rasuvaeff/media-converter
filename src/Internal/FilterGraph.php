@@ -57,11 +57,7 @@ final class FilterGraph
         // then the argument-level and graph-level metacharacters.
         $escaped = str_replace('\\', '\\\\', $value);
 
-        return str_replace(
-            ["'", ':', '[', ']', ',', ';'],
-            ["\\'", '\\\\:', '\\[', '\\]', '\\,', '\\;'],
-            $escaped,
-        );
+        return str_replace(["'", ':', '[', ']', ',', ';'], ["\\'", '\\\\:', '\\[', '\\]', '\\,', '\\;'], $escaped);
     }
 
     /**

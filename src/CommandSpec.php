@@ -99,8 +99,12 @@ final class CommandSpec
      *
      * @param list<string> $options
      */
-    public function addInput(string $source, array $options = [], bool $probe = true, bool $timeline = true): int
-    {
+    public function addInput(
+        string $source,
+        array $options = [],
+        bool $probe = true,
+        bool $timeline = true,
+    ): int {
         if ($source === '') {
             throw new \InvalidArgumentException('Input source cannot be empty');
         }
