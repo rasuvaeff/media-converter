@@ -8,7 +8,9 @@ use Rasuvaeff\MediaConverter\ConversionFailed;
 use Rasuvaeff\MediaConverter\Internal\OutputLayout;
 use Rasuvaeff\MediaConverter\Internal\OutputTransaction;
 use Testo\Assert;
+use Testo\Assert\ExpectException;
 use Testo\Codecov\Covers;
+use Testo\Data\DataProvider;
 use Testo\Lifecycle\AfterTest;
 use Testo\Lifecycle\BeforeTest;
 use Testo\Test;
@@ -464,5 +466,268 @@ final class OutputTransactionTest
 
         Assert::true(is_file($stale));
         @unlink($stale);
+    }
+
+    #[ExpectException(\InvalidArgumentException::class)]
+    public function rejectsAnEmptyOutputPath(): void
+    {
+        new OutputTransaction('', OutputLayout::single());
+    }
+
+    public function aMissingOutputDirectoryFailsTheTransaction(): void
+    {
+        $caught = $this->construct($this->directory . '/missing/out.mp4', OutputLayout::single());
+
+        Assert::notNull($caught);
+        Assert::same($caught->stderrTail(), 'Output directory does not exist: ' . $this->directory . '/missing');
+    }
+
+    public function anUnopenableLockFileFailsTheTransaction(): void
+    {
+        mkdir($this->directory . '/.out.mp4.media-converter.lock');
+
+        $caught = $this->construct($this->directory . '/out.mp4', OutputLayout::single());
+
+        @rmdir($this->directory . '/.out.mp4.media-converter.lock');
+        Assert::notNull($caught);
+        Assert::same($caught->stderrTail(), 'Cannot lock output destination: ' . $this->directory . '/out.mp4');
+    }
+
+    public function aSingleLayoutLeavesTheArgvUntouched(): void
+    {
+        $transaction = new OutputTransaction($this->directory . '/out.mp4', OutputLayout::single());
+        $argv = ['ffmpeg', '-y', '-i', 'in.mp4', $transaction->stagedOutputPath()];
+
+        Assert::same($transaction->rewriteArgv($argv), $argv);
+
+        $transaction->rollback();
+    }
+
+    public function rewriteArgvRejectsACustomPatternAbsentFromTheArgv(): void
+    {
+        $transaction = new OutputTransaction(
+            $this->directory . '/playlist.m3u8',
+            OutputLayout::hls($this->directory . '/segment-%03d.ts'),
+        );
+        $caught = null;
+
+        try {
+            $transaction->rewriteArgv(['ffmpeg', $transaction->stagedOutputPath()]);
+        } catch (\LogicException $caught) {
+        }
+
+        Assert::notNull($caught);
+        Assert::same($caught->getMessage(), 'HLS segment pattern is absent from rendered argv');
+
+        $transaction->rollback();
+    }
+
+    public function rewriteArgvReturnsAListEvenForAnArgvWithGaps(): void
+    {
+        $pattern = $this->directory . '/segment-%03d.ts';
+        $transaction = new OutputTransaction($this->directory . '/playlist.m3u8', OutputLayout::hls($pattern));
+
+        $argv = $transaction->rewriteArgv([5 => 'ffmpeg', 6 => '-hls_segment_filename', 7 => $pattern]);
+
+        Assert::same(array_keys($argv), [0, 1, 2]);
+
+        $transaction->rollback();
+    }
+
+    public function commitWithoutAStagedOutputFails(): void
+    {
+        $output = $this->directory . '/out.mp4';
+        $transaction = new OutputTransaction($output, OutputLayout::single());
+        $caught = null;
+
+        try {
+            $transaction->commit();
+        } catch (ConversionFailed $caught) {
+        }
+
+        Assert::notNull($caught);
+        Assert::same($caught->stderrTail(), 'ffmpeg reported success but did not create the output file');
+        Assert::false(is_file($output));
+    }
+
+    public function aFailedMoveKeepsBackupsPrivateAndRollbackRestoresEveryTarget(): void
+    {
+        $output = $this->directory . '/playlist.m3u8';
+        $pattern = $this->directory . '/seg-%03d.ts';
+        file_put_contents($output, 'old playlist');
+        file_put_contents($this->directory . '/seg-000.ts', 'old 0');
+        mkdir($this->directory . '/seg-001.ts');
+        file_put_contents($this->directory . '/seg-002.ts', 'old 2');
+        $transaction = new OutputTransaction($output, OutputLayout::hls($pattern));
+        $argv = $transaction->rewriteArgv(['ffmpeg', '-hls_segment_filename', $pattern, $transaction->stagedOutputPath()]);
+        $staging = dirname($argv[2]);
+
+        foreach (['seg-000.ts', 'seg-001.ts', 'seg-002.ts'] as $name) {
+            file_put_contents($staging . '/' . $name, 'new ' . $name);
+        }
+
+        file_put_contents($transaction->stagedOutputPath(), 'new playlist');
+        $caught = null;
+
+        try {
+            $transaction->commit();
+        } catch (ConversionFailed $caught) {
+        }
+
+        Assert::notNull($caught);
+        Assert::same(
+            $caught->stderrTail(),
+            'Cannot move output artifact to its destination: ' . $this->directory . '/seg-001.ts',
+        );
+        if (\PHP_OS_FAMILY !== 'Windows') {
+            // Windows has no POSIX mode bits: mkdir() reports 0777 there.
+            Assert::same(fileperms($staging . '/backups') & 0o777, 0o700);
+        }
+
+        $backups = array_values(array_diff(scandir($staging . '/backups') ?: [], ['.', '..']));
+        Assert::same($backups, ['0', '1', '3']);
+
+        $transaction->rollback();
+
+        Assert::same(file_get_contents($output), 'old playlist');
+        Assert::same(file_get_contents($this->directory . '/seg-000.ts'), 'old 0');
+        Assert::true(is_dir($this->directory . '/seg-001.ts'));
+        Assert::same(file_get_contents($this->directory . '/seg-002.ts'), 'old 2');
+        Assert::false(is_dir($staging));
+        @rmdir($this->directory . '/seg-001.ts');
+    }
+
+    public function aRelativePatternWithoutADirectoryCommitsIntoTheWorkingDirectory(): void
+    {
+        $output = $this->directory . '/playlist.m3u8';
+        $transaction = new OutputTransaction($output, OutputLayout::hls('segment-%03d.ts'));
+        $argv = $transaction->rewriteArgv(['ffmpeg', '-hls_segment_filename', 'segment-%03d.ts', $transaction->stagedOutputPath()]);
+        $staged = dirname($argv[2]) . '/segment-000.ts';
+        file_put_contents($staged, 'segment');
+        file_put_contents($transaction->stagedOutputPath(), $staged . "\n");
+
+        $artifacts = $transaction->commit();
+
+        Assert::same($artifacts, [$output, getcwd() . '/segment-000.ts']);
+        Assert::same(file_get_contents($output), "segment-000.ts\n");
+    }
+
+    public function aRelativePatternWithASubdirectoryResolvesAgainstTheWorkingDirectory(): void
+    {
+        mkdir($this->directory . '/segments');
+        $output = $this->directory . '/playlist.m3u8';
+        $transaction = new OutputTransaction($output, OutputLayout::hls('segments/segment-%03d.ts'));
+        $argv = $transaction->rewriteArgv(['ffmpeg', '-hls_segment_filename', 'segments/segment-%03d.ts', $transaction->stagedOutputPath()]);
+        $staged = dirname($argv[2]) . '/segment-000.ts';
+        file_put_contents($staged, 'segment');
+        file_put_contents($transaction->stagedOutputPath(), $staged . "\n");
+
+        $artifacts = $transaction->commit();
+
+        Assert::same($artifacts, [$output, getcwd() . '/segments/segment-000.ts']);
+        Assert::same(file_get_contents($output), "segments/segment-000.ts\n");
+        @unlink($this->directory . '/segments/segment-000.ts');
+        @rmdir($this->directory . '/segments');
+    }
+
+    public function aRootDirectoryPatternKeepsASingleLeadingSlashInThePlaylist(): void
+    {
+        // dirname() of a root-level pattern yields a backslash-separated path on Windows.
+        if (\PHP_OS_FAMILY === 'Windows') {
+            return;
+        }
+
+        $output = $this->directory . '/playlist.m3u8';
+        $transaction = new OutputTransaction($output, OutputLayout::hls('/segment-%03d.ts'));
+        $argv = $transaction->rewriteArgv(['ffmpeg', '-hls_segment_filename', '/segment-%03d.ts', $transaction->stagedOutputPath()]);
+        file_put_contents($transaction->stagedOutputPath(), dirname($argv[2]) . "/segment-000.ts\n");
+
+        $transaction->commit();
+
+        Assert::same(file_get_contents($output), "/segment-000.ts\n");
+    }
+
+    #[DataProvider('missingSegmentDirectoryProvider')]
+    public function aMissingSegmentDirectoryFailsTheTransaction(string $pattern, string $expectedDirectory): void
+    {
+        $caught = $this->construct($this->directory . '/playlist.m3u8', OutputLayout::hls($pattern));
+
+        Assert::notNull($caught);
+        Assert::same(
+            $caught->stderrTail(),
+            'HLS segment directory does not exist: ' . str_replace('@cwd@', (string) getcwd(), $expectedDirectory),
+        );
+    }
+
+    public static function missingSegmentDirectoryProvider(): iterable
+    {
+        yield 'posix absolute' => ['/media-converter-missing/seg-%03d.ts', '/media-converter-missing'];
+        yield 'windows drive with slash' => ['C:/segs/seg-%03d.ts', 'C:/segs'];
+        yield 'rooted backslash' => ['\\srv/segs/seg-%03d.ts', '\\srv/segs'];
+        yield 'relative' => ['missing/seg-%03d.ts', '@cwd@/missing'];
+        yield 'relative with a drive-like inner segment' => ['segs/C:/x/seg-%03d.ts', '@cwd@/segs/C:/x'];
+    }
+
+    public function aNonArrayInventoryIsIgnored(): void
+    {
+        file_put_contents($this->directory . '/.playlist.m3u8.media-converter.json', '42');
+
+        $artifacts = $this->commitManagedPlaylist($this->directory . '/playlist.m3u8');
+
+        Assert::same($artifacts, [$this->directory . '/playlist.m3u8']);
+    }
+
+    public function aCorruptInventoryIsIgnored(): void
+    {
+        file_put_contents($this->directory . '/.playlist.m3u8.media-converter.json', '{not json');
+
+        $artifacts = $this->commitManagedPlaylist($this->directory . '/playlist.m3u8');
+
+        Assert::same($artifacts, [$this->directory . '/playlist.m3u8']);
+    }
+
+    public function theInventorySweepIgnoresNonStringEntriesAndOtherDirectories(): void
+    {
+        mkdir($this->directory . '/sub');
+        $first = $this->directory . '/pl-' . str_repeat('a', 16) . '-00001.ts';
+        $second = $this->directory . '/pl-' . str_repeat('b', 16) . '-00002.ts';
+        $elsewhere = $this->directory . '/sub/pl-' . str_repeat('c', 16) . '-00003.ts';
+        file_put_contents($first, 'old');
+        file_put_contents($second, 'old');
+        file_put_contents($elsewhere, 'other directory');
+        file_put_contents(
+            $this->directory . '/.pl.m3u8.media-converter.json',
+            json_encode([$first, 42, $second, $elsewhere], JSON_THROW_ON_ERROR),
+        );
+
+        $this->commitManagedPlaylist($this->directory . '/pl.m3u8');
+
+        Assert::false(is_file($first));
+        Assert::false(is_file($second));
+        Assert::true(is_file($elsewhere));
+        @unlink($elsewhere);
+        @rmdir($this->directory . '/sub');
+    }
+
+    /**
+     * @return non-empty-list<string>
+     */
+    private function commitManagedPlaylist(string $output): array
+    {
+        $transaction = new OutputTransaction($output, OutputLayout::hls(null));
+        file_put_contents($transaction->stagedOutputPath(), "#EXTM3U\n");
+
+        return $transaction->commit();
+    }
+
+    private function construct(string $output, OutputLayout $layout): ?ConversionFailed
+    {
+        try {
+            new OutputTransaction($output, $layout);
+        } catch (ConversionFailed $failure) {
+            return $failure;
+        }
+
+        return null;
     }
 }

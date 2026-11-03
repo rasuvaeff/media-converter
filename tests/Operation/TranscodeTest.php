@@ -54,4 +54,10 @@ final class TranscodeTest
     {
         new Transcode(videoCodec: 'libx264', audioBitrateKbps: 0);
     }
+
+    #[ExpectException(\InvalidArgumentException::class)]
+    public function rejectsEmptyAudioCodec(): void
+    {
+        new Transcode(audioCodec: '');
+    }
 }

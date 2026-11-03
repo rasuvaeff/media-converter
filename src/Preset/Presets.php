@@ -53,8 +53,11 @@ final class Presets
     /**
      * A broadly compatible H.264/AAC MP4 profile for web playback.
      */
-    public static function webMp4(string $source, int $videoBitrateKbps = 2_500, int $audioBitrateKbps = 192): Pipeline
-    {
+    public static function webMp4(
+        string $source,
+        int $videoBitrateKbps = 2_500,
+        int $audioBitrateKbps = 192,
+    ): Pipeline {
         return Pipeline::from($source)->add(new Transcode(
             videoCodec: 'libx264',
             audioCodec: 'aac',
@@ -77,8 +80,11 @@ final class Presets
      * A VP9/Opus WebM profile. VP9 compresses better than VP8 but encodes
      * slower; swap the codecs via a plain {@see Transcode} if VP8 is needed.
      */
-    public static function webM(string $source, int $videoBitrateKbps = 2_500, int $audioBitrateKbps = 128): Pipeline
-    {
+    public static function webM(
+        string $source,
+        int $videoBitrateKbps = 2_500,
+        int $audioBitrateKbps = 128,
+    ): Pipeline {
         return Pipeline::from($source)->add(new Transcode(
             videoCodec: 'libvpx-vp9',
             audioCodec: 'libopus',
@@ -90,24 +96,31 @@ final class Presets
     /**
      * Extract the audio track as an MP3 file.
      */
-    public static function mp3(string $source, int $bitrateKbps = 192): Pipeline
-    {
+    public static function mp3(
+        string $source,
+        int $bitrateKbps = 192,
+    ): Pipeline {
         return Pipeline::from($source)->add(new ExtractAudio('libmp3lame', $bitrateKbps));
     }
 
     /**
      * Extract the audio track as an AAC file (M4A container).
      */
-    public static function aac(string $source, int $bitrateKbps = 128): Pipeline
-    {
+    public static function aac(
+        string $source,
+        int $bitrateKbps = 128,
+    ): Pipeline {
         return Pipeline::from($source)->add(new ExtractAudio('aac', $bitrateKbps));
     }
 
     /**
      * A single JPEG/PNG still frame at `$at`, resized to `$width`.
      */
-    public static function webThumbnail(string $source, Duration $at, int $width = 320): Pipeline
-    {
+    public static function webThumbnail(
+        string $source,
+        Duration $at,
+        int $width = 320,
+    ): Pipeline {
         return Pipeline::from($source)->add(new Thumbnail($at, $width));
     }
 
@@ -115,8 +128,12 @@ final class Presets
      * A `[$from, $to)` clip capped to `$maxWidth` and re-encoded to
      * widely-compatible H.264/AAC — sized for sharing, not archival.
      */
-    public static function socialClip(string $source, Duration $from, Duration $to, int $maxWidth = 720): Pipeline
-    {
+    public static function socialClip(
+        string $source,
+        Duration $from,
+        Duration $to,
+        int $maxWidth = 720,
+    ): Pipeline {
         return Pipeline::from($source)
             ->add(new Trim($from, $to))
             ->add(new Scale(width: $maxWidth))

@@ -323,4 +323,103 @@ final class CommandSpecTest
         Assert::same($caught->exitCode, 0);
         Assert::same($caught->stderrTail(), 'Only one package output operation is allowed per pipeline');
     }
+
+    public function theDefaultAudioOutputDoesNotOverwriteAnEarlierDefault(): void
+    {
+        $spec = new CommandSpec();
+        $spec->setDefaultAudioOutput('0:a?');
+        $spec->setDefaultAudioOutput('1:a');
+
+        Assert::same($spec->audioOutput(), '0:a?');
+    }
+
+    public function withoutATimelineTrimTheOutputDurationIsTheInputDuration(): void
+    {
+        Assert::same((new CommandSpec())->outputDuration(Duration::seconds(10))?->toSeconds(), 10.0);
+    }
+
+    public function requestVideoOnlyAndSubtitleOnlyRecordTheModeAndOwner(): void
+    {
+        $video = new CommandSpec();
+        $video->requestVideoOnly('thumb');
+        $subtitle = new CommandSpec();
+        $subtitle->requestSubtitleOnly('subs');
+
+        Assert::same($video->outputMode()->name, 'VideoOnly');
+        Assert::same($video->outputModeOwners(), ['thumb']);
+        Assert::same($subtitle->outputMode()->name, 'SubtitleOnly');
+        Assert::same($subtitle->outputModeOwners(), ['subs']);
+    }
+
+    public function addInputRegistersProbeAndTimelineSourcesOnlyWhenAsked(): void
+    {
+        $spec = new CommandSpec();
+        $spec->addInput('a.mp4', probe: false, timeline: false);
+
+        Assert::same($spec->inputSources(), ['a.mp4']);
+        Assert::same($spec->probeSources(), []);
+        Assert::same($spec->timelineSources(), []);
+    }
+
+    #[ExpectException(\InvalidArgumentException::class)]
+    public function rejectsAnEmptyVideoOutputMap(): void
+    {
+        (new CommandSpec())->setVideoOutput('');
+    }
+
+    #[ExpectException(\InvalidArgumentException::class)]
+    public function rejectsAnEmptyAudioOutputMap(): void
+    {
+        (new CommandSpec())->setAudioOutput('');
+    }
+
+    #[ExpectException(\InvalidArgumentException::class)]
+    public function rejectsAnEmptyGraphVideoLabel(): void
+    {
+        (new CommandSpec())->setGraphVideoOutput('');
+    }
+
+    #[ExpectException(\InvalidArgumentException::class)]
+    public function rejectsAnEmptyGraphAudioLabel(): void
+    {
+        (new CommandSpec())->setGraphAudioOutput('');
+    }
+
+    #[ExpectException(\InvalidArgumentException::class)]
+    public function rejectsAnEmptyDefaultVideoOutput(): void
+    {
+        (new CommandSpec())->setDefaultVideoOutput('');
+    }
+
+    #[ExpectException(\InvalidArgumentException::class)]
+    public function rejectsAnEmptyDefaultAudioOutput(): void
+    {
+        (new CommandSpec())->setDefaultAudioOutput('');
+    }
+
+    #[ExpectException(\InvalidArgumentException::class)]
+    public function rejectsAnEmptyOutputSeekOwner(): void
+    {
+        (new CommandSpec())->claimOutputSeek('');
+    }
+
+    public function anOutputSeekOwnerIsRecorded(): void
+    {
+        $spec = new CommandSpec();
+        $spec->claimOutputSeek('trim');
+
+        Assert::same($spec->seekOwners(), ['trim']);
+    }
+
+    #[ExpectException(\InvalidArgumentException::class)]
+    public function rejectsAnEmptySubtitleOutputMap(): void
+    {
+        (new CommandSpec())->setSubtitleOutput('');
+    }
+
+    #[ExpectException(\InvalidArgumentException::class)]
+    public function rejectsAnEmptyOutputModeOwner(): void
+    {
+        (new CommandSpec())->requestAudioOnly('');
+    }
 }

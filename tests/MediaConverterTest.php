@@ -802,4 +802,70 @@ final class MediaConverterTest
         Assert::false(MediaConverter::isTransientFailure(new ConversionFailed(ConversionFailureReason::Timeout, 124, 'HTTP 503')));
         Assert::false(MediaConverter::isTransientFailure(new \RuntimeException('HTTP 503')));
     }
+
+    public function cancellationRequestedWhileTheProcessIsWritingStopsAtTheNextChunk(): void
+    {
+        $runner = Doubles::runner(
+            [new ProcessOutcome(0, '')],
+            emit: [['out', "frame=1\nout_time_us=1000000\nprogress=continue\n"], ['out', 'more']],
+        );
+        $token = new CancellationToken();
+        $caught = null;
+
+        try {
+            (new MediaConverter(FfmpegBinary::default(), $runner))->run(
+                Pipeline::from('in.mp4'),
+                $this->output,
+                static function (ProgressEvent $event) use ($token): void {
+                    if ($event->frame() !== null) {
+                        $token->cancel();
+                    }
+                },
+                $token,
+            );
+        } catch (ConversionCancelled $failure) {
+            $caught = $failure;
+        }
+
+        Assert::notNull($caught);
+        Assert::false(is_file($this->output));
+    }
+
+    public function progressIgnoresWhateverArrivesOnStderr(): void
+    {
+        $runner = Doubles::runner(
+            [new ProcessOutcome(0, '')],
+            emit: [['err', "frame=1\nout_time_us=2000000\nprogress=continue\n"]],
+        );
+        $events = [];
+
+        (new MediaConverter(FfmpegBinary::default(), $runner))->run(
+            Pipeline::from('in.mp4'),
+            $this->output,
+            onProgress: static function (ProgressEvent $event) use (&$events): void {
+                $events[] = $event;
+            },
+        );
+
+        Assert::same(
+            array_values(array_filter($events, static fn(ProgressEvent $event): bool => $event->frame() !== null)),
+            [],
+        );
+    }
+
+    public function aRepeatedSourceIsProbedOnceAndDoesNotStopTheProbing(): void
+    {
+        $runner = Doubles::runner([new ProcessOutcome(0, '')]);
+        $prober = Doubles::prober([
+            new MediaInfo(Duration::seconds(10), 1920, 1080, 'h264', 'aac', null),
+            new MediaInfo(Duration::seconds(20), 1920, 1080, 'h264', 'aac', null),
+        ]);
+
+        (new MediaConverter(FfmpegBinary::default(), $runner, prober: $prober))->run(
+            Pipeline::concat(['first.mp4', 'first.mp4', 'second.mp4']),
+            $this->output,
+        );
+
+        Assert::same(Doubles::probed($prober), ['first.mp4', 'second.mp4']);
+    }
 }

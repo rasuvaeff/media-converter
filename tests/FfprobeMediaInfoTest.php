@@ -441,4 +441,19 @@ final class FfprobeMediaInfoTest
     {
         (new FfprobeMediaInfo(FfmpegBinary::default(), Doubles::probeRunner([])))->probe('');
     }
+
+    public function aStreamsValueThatIsNotAListYieldsNoStreamInfo(): void
+    {
+        $runner = Doubles::probeRunner(
+            [new ProcessOutcome(0, '')],
+            emit: [['out', '{"streams":"oops","format":{"duration":"1.5"}}']],
+        );
+
+        $info = (new FfprobeMediaInfo(FfmpegBinary::default(), $runner))->probe('in.mp4');
+
+        Assert::same($info->duration()->toMillis(), 1_500);
+        Assert::null($info->width());
+        Assert::null($info->videoCodec());
+        Assert::null($info->audioCodec());
+    }
 }
