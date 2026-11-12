@@ -471,6 +471,24 @@ $result = $converter->run($pipeline, 'out.mp4');
   до запуска, если пути приходят от пользователя.
 - Библиотека не обходит DRM — зашифрованные источники падают с
   `ConversionFailureReason::Drm`.
+- Для недоверенных загрузок ограничьте протоколы, которые могут открывать
+  ffmpeg и ffprobe, чтобы подделанный HLS/concat-плейлист не добрался до других
+  протоколов. Передайте одни и те же input-опции обеим сторонам:
+
+  ```php
+  $only = ['-protocol_whitelist', 'file'];
+  $prober = new FfprobeMediaInfo(FfmpegBinary::default(), new SymfonyProcessRunner(), inputOptions: $only);
+  $pipeline = Pipeline::from($upload, inputOptions: $only)->add(new Transcode(videoCodec: 'libx264'));
+  ```
+
+  `inputOptions` у `FfprobeMediaInfo` ставятся прямо перед источником, как у
+  `Pipeline::from()` — перед `-i`. Они действуют на **каждый** источник, который
+  получает пробер: с пробером `MediaConverter` пробирует и источник `ReplaceAudio`
+  и сегменты concat, поэтому удалённый дополнительный вход под
+  одним `file` упадёт на пробинге — расширьте список (`file,http,https,tcp,tls`)
+  или используйте для таких pipeline пробер без него. Один кэш
+  `CachedProbesMedia` делите только между проберами с одинаковыми опциями: ключ
+  кэша — источник, а не опции.
 
 ## Примеры
 

@@ -467,6 +467,24 @@ $result = $converter->run($pipeline, 'out.mp4');
   before running if they originate from user input.
 - This library does not bypass DRM — encrypted sources fail with
   `ConversionFailureReason::Drm`.
+- For untrusted uploads, restrict the protocols ffmpeg and ffprobe may open, so
+  a crafted HLS/concat playlist cannot reach other protocols. Pass the same
+  input options to both sides:
+
+  ```php
+  $only = ['-protocol_whitelist', 'file'];
+  $prober = new FfprobeMediaInfo(FfmpegBinary::default(), new SymfonyProcessRunner(), inputOptions: $only);
+  $pipeline = Pipeline::from($upload, inputOptions: $only)->add(new Transcode(videoCodec: 'libx264'));
+  ```
+
+  `FfprobeMediaInfo`'s `inputOptions` go right before the source, as
+  `Pipeline::from()`'s go before `-i`. They apply to **every** source the
+  prober is given: with a prober, `MediaConverter` also probes the `ReplaceAudio`
+  source and concat segments, so a remote secondary input fails
+  the probe under `file` alone — widen the list (`file,http,https,tcp,tls`) or
+  use a prober without it for such pipelines. Share one `CachedProbesMedia`
+  cache only between probers with the same options: the cache key is the
+  source, not the options.
 
 ## Examples
 

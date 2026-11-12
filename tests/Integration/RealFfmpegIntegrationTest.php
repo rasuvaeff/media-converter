@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Rasuvaeff\MediaConverter\Tests\Integration;
 
 use Rasuvaeff\Duration\Duration;
+use Rasuvaeff\MediaConverter\ConversionFailed;
 use Rasuvaeff\MediaConverter\ConversionResult;
 use Rasuvaeff\MediaConverter\FfmpegBinary;
 use Rasuvaeff\MediaConverter\FfprobeMediaInfo;
@@ -171,6 +172,29 @@ final class RealFfmpegIntegrationTest
         $info = $this->prober->probe($result->outputPath());
         Assert::same($info->videoCodec(), 'h264');
         Assert::same($info->audioCodec(), 'aac');
+    }
+
+    public function probeInputOptionsRestrictTheProtocolsFfprobeMayOpen(): void
+    {
+        if (!$this->available) {
+            return;
+        }
+
+        $restricted = new FfprobeMediaInfo($this->binary, $this->runner, inputOptions: ['-protocol_whitelist', 'file']);
+        Assert::same($restricted->probe($this->fixture)->videoCodec(), 'h264');
+
+        $playlist = $this->path('crafted.m3u8');
+        file_put_contents($playlist, "#EXTM3U\n#EXT-X-TARGETDURATION:2\n#EXTINF:2.0,\nhttp://127.0.0.1:9/segment.ts\n#EXT-X-ENDLIST\n");
+        $stderr = '';
+
+        try {
+            $restricted->probe($playlist);
+        } catch (ConversionFailed $failure) {
+            $stderr = $failure->stderrTail();
+        }
+
+        // ffmpeg 7.1+ limits nested protocols itself (whitelist 'file,crypto,data'); the exact list proves the option reached ffprobe
+        Assert::string($stderr)->contains("not on whitelist 'file'!");
     }
 
     public function remuxStreamCopiesLosslessly(): void

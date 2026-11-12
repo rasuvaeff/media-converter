@@ -47,6 +47,17 @@ final class FfprobeMediaInfoTest
         ]);
     }
 
+    public function putsTheInputOptionsRightBeforeTheSource(): void
+    {
+        $runner = Doubles::probeRunner([new ProcessOutcome(0, '')], emit: [['out', self::SAMPLE_JSON]]);
+        (new FfprobeMediaInfo(FfmpegBinary::default(), $runner, inputOptions: ['-protocol_whitelist', 'file']))->probe('upload.m3u8');
+
+        Assert::same(Doubles::argv($runner, 0), [
+            '/usr/bin/ffprobe', '-v', 'error', '-print_format', 'json',
+            '-show_format', '-show_streams', '-protocol_whitelist', 'file', 'upload.m3u8',
+        ]);
+    }
+
     public function usesTheDefaultTimeoutWhenNoneIsGiven(): void
     {
         $runner = Doubles::probeRunner([new ProcessOutcome(0, '')], emit: [['out', self::SAMPLE_JSON]]);

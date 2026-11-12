@@ -129,6 +129,13 @@ false negative.
   pipeline rejects ANY primary-input-option owner: the option would silently
   apply to the first segment only (`Pipeline::validate()` checks
   `primaryInputOptionOwners()` against `concatSegments`).
+  `FfprobeMediaInfo`'s `inputOptions` (constructor, per instance — so
+  `CachedProbesMedia` keys stay `(path, size, mtime)`) go right before the
+  source, mirroring `Pipeline::from()`; the usual one is
+  `-protocol_whitelist file` for untrusted uploads. ffmpeg 7.1+ already
+  limits nested protocols to `file,crypto,data` by itself, so the
+  Integration test asserts the exact list `'file'` in stderr — a bare
+  "not on whitelist" passes without the option (verified on ffprobe 8.1.3).
 - **`AddMetadata` keys are whitelisted.** `-metadata` values are plain argv
   (no filtergraph escaping needed — `=`, unicode, newlines all safe), but a
   typo'd KEY (`tilte`) would be silently written as a nonsense tag, so keys

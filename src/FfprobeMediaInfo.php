@@ -17,16 +17,25 @@ use Rasuvaeff\Duration\Duration;
  * exit containing a decrypt diagnostic is thrown as {@see ConversionFailed}
  * with reason {@see ConversionFailureReason::Drm}.
  *
+ * `$inputOptions` are placed before the source, as `Pipeline::from()`'s
+ * `inputOptions` are placed before `-i` — for an untrusted upload the usual
+ * one is `['-protocol_whitelist', 'file']`, so a crafted playlist cannot make
+ * ffprobe open other protocols.
+ *
  * @api
  */
 final readonly class FfprobeMediaInfo implements ProbesMedia
 {
     private const int DEFAULT_TIMEOUT_SECONDS = 30;
 
+    /**
+     * @param list<string> $inputOptions input-level ffprobe options emitted before the source
+     */
     public function __construct(
         private FfmpegBinary $binary,
         private RunsProcess $runner,
         private ?Duration $timeout = null,
+        private array $inputOptions = [],
     ) {}
 
     #[\Override]
@@ -42,6 +51,7 @@ final readonly class FfprobeMediaInfo implements ProbesMedia
             '-print_format', 'json',
             '-show_format',
             '-show_streams',
+            ...$this->inputOptions,
             $source,
         ];
 
