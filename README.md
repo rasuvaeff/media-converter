@@ -478,7 +478,13 @@ $result = $converter->run($pipeline, 'out.mp4');
   ```
 
   `FfprobeMediaInfo`'s `inputOptions` go right before the source, as
-  `Pipeline::from()`'s go before `-i`.
+  `Pipeline::from()`'s go before `-i`. They apply to **every** source the
+  prober is given: with a prober, `MediaConverter` also probes the `ReplaceAudio`
+  source and concat segments, so a remote secondary input fails
+  the probe under `file` alone — widen the list (`file,http,https,tcp,tls`) or
+  use a prober without it for such pipelines. Share one `CachedProbesMedia`
+  cache only between probers with the same options: the cache key is the
+  source, not the options.
 
 ## Examples
 

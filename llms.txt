@@ -204,6 +204,8 @@ $conv->run($pipeline, 'out.mp4', $onProgress=null, $token=null); // ConversionRe
 $prober = new FfprobeMediaInfo($bin, new SymfonyProcessRunner(), $timeout=null, $inputOptions=[]);
 // $inputOptions (list<string>) go right before the source, e.g. ['-protocol_whitelist', 'file']
 // for untrusted uploads — pass the same list to Pipeline::from($src, inputOptions: ...).
+// They apply to EVERY probed source (MediaConverter also probes the ReplaceAudio source and
+// concat segments); CachedProbesMedia keys on the source only — share a cache between equal options.
 $prober->probe($source); // MediaInfo | throws ConversionFailed(ProbeFailed|Timeout|Drm|FfprobeNotExecutable)
 // DRM heuristic: MediaInfo::isEncrypted() true when combined stdout/stderr matches /decrypt/i
 // (ffprobe has no dedicated encrypted-stream flag); non-zero decrypt diagnostics throw Drm.
