@@ -19,7 +19,7 @@ exact ffmpeg command. No shell strings; every path is a separate argv entry.
 
 ## Requirements
 
-- PHP 8.3+
+- PHP 8.3 – 8.6
 - `ffmpeg` and `ffprobe` binaries installed and executable (to run the built
   commands — composing and inspecting a pipeline needs no binary)
 - Runtime dependencies: `symfony/process`, `rasuvaeff/retry`,
