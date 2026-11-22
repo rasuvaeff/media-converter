@@ -31,7 +31,7 @@
         "source": "https://github.com/rasuvaeff/media-converter"
     },
     "require": {
-        "php": "8.3 - 8.5",
+        "php": "8.3 - 8.6",
         "rasuvaeff/bulkhead": "^1.0",
         "rasuvaeff/duration": "^1.0",
         "rasuvaeff/retry": "^1.0",

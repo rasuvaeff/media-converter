@@ -17,7 +17,7 @@ inspecting a pipeline needs no binary.
 
 ## Rules
 
-- PHP 8.3+, `declare(strict_types=1)`. Value objects and operations are
+- PHP 8.3 – 8.6, `declare(strict_types=1)`. Value objects and operations are
   `final readonly class`.
 - Compose with `Pipeline::from($source)->add($operation)->...`, or
   `Pipeline::concat($segments)` for concatenation. Pipeline is IMMUTABLE —

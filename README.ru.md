@@ -19,7 +19,7 @@ crop, extract audio, remux — в `Pipeline`, который материали�
 
 ## Требования
 
-- PHP 8.3+
+- PHP 8.3 – 8.6
 - бинарники `ffmpeg` и `ffprobe`, установленные и исполняемые (для запуска
   собранных команд; для сборки и инспекции pipeline бинарник не нужен)
 - Runtime-зависимости: `symfony/process`, `rasuvaeff/retry`,
