@@ -102,15 +102,10 @@ final readonly class FfprobeMediaInfo implements ProbesMedia
             );
         }
 
-        /** @var mixed $formatValue */
-        $formatValue = $decoded['format'] ?? [];
-        $format = is_array($formatValue) ? $formatValue : [];
+        $format = isset($decoded['format']) && is_array($decoded['format']) ? $decoded['format'] : [];
 
-        /** @var mixed $streamsValue */
-        $streamsValue = $decoded['streams'] ?? [];
-
-        $video = $this->firstStreamOfType($streamsValue, 'video');
-        $audio = $this->firstStreamOfType($streamsValue, 'audio');
+        $video = $this->firstStreamOfType($decoded['streams'] ?? [], 'video');
+        $audio = $this->firstStreamOfType($decoded['streams'] ?? [], 'audio');
 
         return new MediaInfo(
             // A corrupt container can report a small negative duration —
