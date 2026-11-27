@@ -35,7 +35,7 @@
         "rasuvaeff/bulkhead": "^1.0",
         "rasuvaeff/duration": "^1.0",
         "rasuvaeff/retry": "^1.0",
-        "symfony/process": "^7.0 || ^8.0"
+        "symfony/process": "^7.1.7 || ^8.0.5"
     },
     "require-dev": {
         "ergebnis/composer-normalize": "^2.51",
