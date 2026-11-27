@@ -66,7 +66,7 @@ $pipeline = Pipeline::from('input.mov')
     ->add(new Transcode(videoCodec: 'libx264', audioCodec: 'aac', videoBitrateKbps: 2500));
 
 $conv = new MediaConverter(FfmpegBinary::default(), new SymfonyProcessRunner());
-$result = $conv->run($pipeline, 'out.mp4'); // ConversionResult | ConversionFailed
+$result = $conv->run($pipeline, 'out.mp4'); // ConversionResult; throws ConversionFailed
 ```
 
 Composing/inspecting a pipeline needs no ffmpeg binary; only `run()` does.
